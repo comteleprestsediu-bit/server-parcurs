@@ -1,24 +1,7 @@
-from io import BytesIO
-
-@app.route("/download")
-def download_excel():
-
-    wb = Workbook()
-    ws = wb.active
-
-    # TITLU
-    ws.merge_cells("A1:F1")
-    ws["A1"] = "Raport curse Flota Comteleprest"
-    ws["A1"].font = Font(size=16, bold=True)from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment
 import os
-from io import BytesIO
-
-# PDF
-from reportlab.lib.pagesizes import A4
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
 
@@ -29,13 +12,16 @@ def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
         ws = wb.active
+        ws.title = "Raport Curse"
+
         ws.append([
-            "nr_auto",
-            "data",
-            "locatie_plecare",
-            "locatie_sosire",
-            "km_parcurs"
+            "Nr Auto",
+            "Data",
+            "Locatie Plecare",
+            "Locatie Sosire",
+            "Km Parcurs"
         ])
+
         wb.save(FILE)
 
 init_excel()
@@ -62,27 +48,28 @@ def citeste_curse():
 
     return curse
 
-
-# 🔹 PAGINA WEB
+# 🔹 PAGINA PRINCIPALĂ (WEB)
 @app.route("/")
 def index():
     curse = citeste_curse()
 
     html = """
     <h2 style='text-align:center;'>Raport curse Flota Comteleprest</h2>
-    <div style='text-align:center;margin:10px;'>
-        <a href='/download'>⬇️ Excel</a> |
-        <a href='/download-pdf'>⬇️ PDF</a>
+    <div style='text-align:center;margin-bottom:10px;'>
+        <a href="/download"><button>⬇️ Export Excel</button></a>
     </div>
-    <table border='1' cellpadding='6' style='border-collapse:collapse;margin:auto;'>
-    <tr style='background:#4F81BD;color:white;'>
+    <table border='1' cellpadding='8' style='border-collapse:collapse;width:100%;'>
+    """
+
+    html += """
+    <tr style='background:#ddd;font-weight:bold;'>
         <th>ID</th>
         <th>Nr Auto</th>
         <th>Data</th>
         <th>Locatie Plecare</th>
         <th>Locatie Sosire</th>
         <th>Km Parcurs</th>
-        <th>Actiuni</th>
+        <th>Actiune</th>
     </tr>
     """
 
@@ -95,19 +82,29 @@ def index():
             <td>{c['locatie_plecare']}</td>
             <td>{c['locatie_sosire']}</td>
             <td>{c['km_parcurs']}</td>
-            <td><a href="/sterge_cursa/{c['id']}">❌ Șterge</a></td>
+            <td>
+                <button onclick="sterge({c['id']})">🗑️ Șterge</button>
+            </td>
         </tr>
         """
 
-    html += "</table>"
-    return html
+    html += """
+    </table>
 
+    <script>
+    function sterge(id){
+        fetch("/sterge_cursa/" + id, {method: "DELETE"})
+        .then(() => location.reload());
+    }
+    </script>
+    """
+
+    return html
 
 # 🔹 API LISTĂ
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
-
 
 # 🔹 ADAUGĂ CURSĂ
 @app.route("/adauga_cursa", methods=["POST"])
@@ -131,12 +128,11 @@ def adauga_cursa():
         return {"status": "ok"}
 
     except Exception as e:
-        print("❌ Eroare:", e)
-        return {"status": "error", "msg": str(e)}
+        print("EROARE:", e)
+        return {"status": "error"}
 
-
-# 🔥 ȘTERGE CURSĂ
-@app.route("/sterge_cursa/<int:id>")
+# 🔹 ȘTERGE
+@app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
 def sterge_cursa(id):
     try:
         wb = load_workbook(FILE)
@@ -146,149 +142,48 @@ def sterge_cursa(id):
 
         wb.save(FILE)
 
-        return "<script>window.location.href='/'</script>"
+        return {"status": "deleted"}
 
     except Exception as e:
-        print("❌ Eroare ștergere:", e)
-        return f"Eroare: {str(e)}"
+        print("EROARE:", e)
+        return {"status": "error"}
 
-
-# 🔥 EXPORT EXCEL (STABIL)
+# 🔹 EXPORT EXCEL PROFESIONAL
 @app.route("/download")
 def download_excel():
     try:
-        wb = Workbook()
+        wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.append(["ID", "Nr Auto", "Data", "Plecare", "Sosire", "Km"])
+        # Titlu
+        ws.insert_rows(1)
+        ws["A1"] = "Raport curse Flota Comteleprest"
+        ws.merge_cells("A1:E1")
 
-        for c in citeste_curse():
-            ws.append([
-                c["id"],
-                c["nr_auto"],
-                c["data"],
-                c["locatie_plecare"],
-                c["locatie_sosire"],
-                c["km_parcurs"]
-            ])
+        ws["A1"].font = Font(size=16, bold=True)
+        ws["A1"].alignment = Alignment(horizontal="center")
 
-        stream = BytesIO()
-        wb.save(stream)
-        stream.seek(0)
+        # Header bold
+        for cell in ws[2]:
+            cell.font = Font(bold=True)
 
-        return send_file(
-            stream,
-            as_attachment=True,
-            download_name="raport_curse.xlsx",
-            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        # Lățime coloane
+        ws.column_dimensions["A"].width = 15
+        ws.column_dimensions["B"].width = 15
+        ws.column_dimensions["C"].width = 30
+        ws.column_dimensions["D"].width = 30
+        ws.column_dimensions["E"].width = 15
 
-    except Exception as e:
-        return f"Eroare download: {str(e)}"
+        export_file = "raport_curse.xlsx"
+        wb.save(export_file)
 
-
-# 🔥 EXPORT PDF
-@app.route("/download-pdf")
-def download_pdf():
-    try:
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4)
-
-        styles = getSampleStyleSheet()
-        elements = []
-
-        elements.append(Paragraph("Raport curse Flota Comteleprest", styles["Title"]))
-        elements.append(Spacer(1, 20))
-
-        data = [["ID", "Nr Auto", "Data", "Plecare", "Sosire", "Km"]]
-
-        for c in citeste_curse():
-            data.append([
-                c["id"],
-                c["nr_auto"],
-                c["data"],
-                c["locatie_plecare"],
-                c["locatie_sosire"],
-                c["km_parcurs"]
-            ])
-
-        table = Table(data)
-
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), colors.grey),
-            ("TEXTCOLOR",(0,0),(-1,0),colors.whitesmoke),
-            ("ALIGN",(0,0),(-1,-1),"CENTER"),
-            ("GRID", (0,0), (-1,-1), 1, colors.black)
-        ]))
-
-        elements.append(table)
-
-        doc.build(elements)
-
-        buffer.seek(0)
-
-        return send_file(
-            buffer,
-            as_attachment=True,
-            download_name="raport_curse.pdf",
-            mimetype="application/pdf"
-        )
+        return send_file(export_file, as_attachment=True)
 
     except Exception as e:
-        return f"Eroare PDF: {str(e)}"
+        print("EROARE DOWNLOAD:", e)
+        return "Eroare export Excel", 500
 
 
-# 🔹 START
+# 🔹 START SERVER
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
-    ws["A1"].alignment = Alignment(horizontal="center")
-
-    # HEADER
-    headers = ["ID", "Nr Auto", "Data", "Locatie Plecare", "Locatie Sosire", "Km Parcurs"]
-
-    header_fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
-
-    for col, header in enumerate(headers, 1):
-        cell = ws.cell(row=2, column=col)
-        cell.value = header
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = header_fill
-        cell.alignment = Alignment(horizontal="center")
-
-    # DATE
-    curse = citeste_curse()
-
-    for row_index, c in enumerate(curse, start=3):
-        ws.cell(row=row_index, column=1, value=c["id"])
-        ws.cell(row=row_index, column=2, value=c["nr_auto"])
-        ws.cell(row=row_index, column=3, value=c["data"])
-        ws.cell(row=row_index, column=4, value=c["locatie_plecare"])
-        ws.cell(row=row_index, column=5, value=c["locatie_sosire"])
-        ws.cell(row=row_index, column=6, value=c["km_parcurs"])
-
-    # AUTO WIDTH
-    for col in ws.columns:
-        max_length = 0
-        col_letter = col[0].column_letter
-        for cell in col:
-            if cell.value:
-                max_length = max(max_length, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = max_length + 2
-
-    # BORDER
-    thin = Side(style="thin")
-    for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=6):
-        for cell in row:
-            cell.border = Border(top=thin, left=thin, right=thin, bottom=thin)
-
-    # 🔥 SALVARE ÎN MEMORIE (NU PE DISC)
-    file_stream = BytesIO()
-    wb.save(file_stream)
-    file_stream.seek(0)
-
-    return send_file(
-        file_stream,
-        as_attachment=True,
-        download_name="Raport_Flota_Comteleprest.xlsx",
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
