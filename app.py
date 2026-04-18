@@ -6,9 +6,7 @@ app = Flask(__name__)
 
 FILE = "curse.xlsx"
 
-# ============================
 # 🔹 INIT EXCEL
-# ============================
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
@@ -24,10 +22,7 @@ def init_excel():
 
 init_excel()
 
-
-# ============================
 # 🔹 CITEȘTE DATE
-# ============================
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
@@ -50,24 +45,49 @@ def citeste_curse():
     return curse
 
 
-# ============================
-# 🔹 PAGINA PRINCIPALĂ
-# ============================
+# 🔥 PAGINA PRINCIPALĂ (PRO)
 @app.route("/")
 def index():
     curse = citeste_curse()
 
-    html = "<h2>Foaie Parcurs</h2><table border='1' cellpadding='5'>"
+    html = """
+    <html>
+    <head>
+        <title>Foaie Parcurs</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    html += """
-    <tr>
-        <th>ID</th>
-        <th>Nr Auto</th>
-        <th>Data</th>
-        <th>Locatie Plecare</th>
-        <th>Locatie Sosire</th>
-        <th>Km Parcurs</th>
-    </tr>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+        <style>
+            body { background:#f5f7fa; }
+            .card { border-radius:15px; }
+            table { font-size:14px; }
+        </style>
+    </head>
+
+    <body>
+
+    <div class="container mt-4">
+
+        <div class="card shadow p-4">
+
+            <h3 class="mb-3">🚗 Raport curse șoferi</h3>
+
+            <input type="text" id="search" class="form-control mb-3" placeholder="🔍 Caută...">
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="tabel">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Nr Auto</th>
+                            <th>Data</th>
+                            <th>Plecare</th>
+                            <th>Sosire</th>
+                            <th>Km</th>
+                        </tr>
+                    </thead>
+                    <tbody>
     """
 
     for c in curse:
@@ -82,60 +102,82 @@ def index():
         </tr>
         """
 
-    html += "</table>"
+    html += """
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 id="total" class="mt-3"></h5>
+
+        </div>
+    </div>
+
+    <script>
+        // 🔍 SEARCH
+        document.getElementById("search").addEventListener("keyup", function() {
+            let filter = this.value.toLowerCase();
+            let rows = document.querySelectorAll("#tabel tbody tr");
+
+            rows.forEach(row => {
+                let text = row.innerText.toLowerCase();
+                row.style.display = text.includes(filter) ? "" : "none";
+            });
+        });
+
+        // 🔢 TOTAL KM
+        let total = 0;
+        document.querySelectorAll("#tabel tbody tr").forEach(row => {
+            let km = row.cells[5].innerText.replace(",", ".");
+            total += parseFloat(km) || 0;
+        });
+
+        document.getElementById("total").innerText = "Total km: " + total.toFixed(2);
+    </script>
+
+    </body>
+    </html>
+    """
+
     return html
 
 
-# ============================
-# 🔹 API LISTĂ
-# ============================
+# 🔹 API LISTĂ CURSE
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
 
 
-# ============================
-# 🔹 ADAUGĂ CURSĂ
-# ============================
+# 🔹 ADAUGĂ CURSĂ (FIX + DEBUG)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
         data = request.get_json(force=True)
 
-        print("📥 DATA PRIMITA:", data)  # 🔥 DEBUG IMPORTANT
-
-        # 🔴 VALIDARE
-        if not data:
-            return {"status": "error", "msg": "No data"}, 400
-
-        nr = data.get("nrAuto", "")
-        data_c = data.get("data", "")
-        lp = data.get("locatiePlecare", "")
-        ls = data.get("locatieSosire", "")
-        km = data.get("kmParcurs", "0")
-
-        if nr == "" or lp == "" or ls == "":
-            return {"status": "error", "msg": "Campuri lipsa"}, 400
+        print("📥 PRIMIT:", data)
 
         wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.append([nr, data_c, lp, ls, km])
+        ws.append([
+            data.get("nrAuto", ""),
+            data.get("data", ""),
+            data.get("locatiePlecare", ""),
+            data.get("locatieSosire", ""),
+            data.get("kmParcurs", "")
+        ])
 
         wb.save(FILE)
 
-        print("✅ SALVAT CU SUCCES")
+        print("✅ SALVAT")
 
         return {"status": "ok"}
 
     except Exception as e:
         print("❌ EROARE:", e)
-        return {"status": "error"}, 500
+        return {"status": "error", "mesaj": str(e)}
 
 
-# ============================
 # 🔥 ȘTERGE CURSĂ
-# ============================
 @app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
 def sterge_cursa(id):
     try:
@@ -149,13 +191,11 @@ def sterge_cursa(id):
         return {"status": "deleted"}
 
     except Exception as e:
-        print("❌ EROARE STERGERE:", e)
+        print("❌ EROARE ȘTERGERE:", e)
         return {"status": "error"}
 
 
-# ============================
-# 🔹 TOTAL KM
-# ============================
+# 🔹 TOTAL KM API
 @app.route("/api/total")
 def total_km():
     curse = citeste_curse()
@@ -177,8 +217,6 @@ def total_km():
     return jsonify(rezultat)
 
 
-# ============================
 # 🔹 START SERVER
-# ============================
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
