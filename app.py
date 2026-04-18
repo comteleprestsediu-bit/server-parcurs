@@ -6,7 +6,9 @@ app = Flask(__name__)
 
 FILE = "curse.xlsx"
 
+# ============================
 # 🔹 INIT EXCEL
+# ============================
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
@@ -23,7 +25,9 @@ def init_excel():
 init_excel()
 
 
+# ============================
 # 🔹 CITEȘTE DATE
+# ============================
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
@@ -32,10 +36,10 @@ def citeste_curse():
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == 0:
-            continue  # skip header
+            continue
 
         curse.append({
-            "id": i - 1,  # 🔥 IMPORTANT pentru swipe delete
+            "id": i - 1,
             "nr_auto": row[0] or "",
             "data": row[1] or "",
             "locatie_plecare": row[2] or "",
@@ -46,7 +50,9 @@ def citeste_curse():
     return curse
 
 
-# 🔹 PAGINA PRINCIPALĂ (browser)
+# ============================
+# 🔹 PAGINA PRINCIPALĂ
+# ============================
 @app.route("/")
 def index():
     curse = citeste_curse()
@@ -80,46 +86,62 @@ def index():
     return html
 
 
-# 🔹 API LISTĂ CURSE
+# ============================
+# 🔹 API LISTĂ
+# ============================
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
 
 
+# ============================
 # 🔹 ADAUGĂ CURSĂ
+# ============================
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
         data = request.get_json(force=True)
 
+        print("📥 DATA PRIMITA:", data)  # 🔥 DEBUG IMPORTANT
+
+        # 🔴 VALIDARE
+        if not data:
+            return {"status": "error", "msg": "No data"}, 400
+
+        nr = data.get("nrAuto", "")
+        data_c = data.get("data", "")
+        lp = data.get("locatiePlecare", "")
+        ls = data.get("locatieSosire", "")
+        km = data.get("kmParcurs", "0")
+
+        if nr == "" or lp == "" or ls == "":
+            return {"status": "error", "msg": "Campuri lipsa"}, 400
+
         wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.append([
-            data.get("nrAuto"),
-            data.get("data"),
-            data.get("locatiePlecare"),
-            data.get("locatieSosire"),
-            data.get("kmParcurs")
-        ])
+        ws.append([nr, data_c, lp, ls, km])
 
         wb.save(FILE)
+
+        print("✅ SALVAT CU SUCCES")
 
         return {"status": "ok"}
 
     except Exception as e:
-        print("❌ Eroare:", e)
-        return {"status": "error"}
+        print("❌ EROARE:", e)
+        return {"status": "error"}, 500
 
 
-# 🔥 ȘTERGE CURSĂ (SWIPE)
+# ============================
+# 🔥 ȘTERGE CURSĂ
+# ============================
 @app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
 def sterge_cursa(id):
     try:
         wb = load_workbook(FILE)
         ws = wb.active
 
-        # +2 pentru că Excel începe de la 1 + header
         ws.delete_rows(id + 2)
 
         wb.save(FILE)
@@ -127,11 +149,13 @@ def sterge_cursa(id):
         return {"status": "deleted"}
 
     except Exception as e:
-        print("❌ Eroare ștergere:", e)
+        print("❌ EROARE STERGERE:", e)
         return {"status": "error"}
 
 
-# 🔹 TOTAL KM PE MAȘINĂ
+# ============================
+# 🔹 TOTAL KM
+# ============================
 @app.route("/api/total")
 def total_km():
     curse = citeste_curse()
@@ -153,6 +177,8 @@ def total_km():
     return jsonify(rezultat)
 
 
+# ============================
 # 🔹 START SERVER
+# ============================
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(host="0.0.0.0", port=5000)
