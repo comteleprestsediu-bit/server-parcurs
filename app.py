@@ -1,12 +1,18 @@
-from flask import Flask, request, jsonify, send_file, redirect
+from flask import Flask, request, jsonify, send_file, redirect, session
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, Alignment, Border, Side
 import os
 
 app = Flask(__name__)
+app.secret_key = "parcurs_secret"
 
 FILE = "curse.xlsx"
 
-# 🔹 INIT EXCEL
+# LOGIN DATE
+USER = "admin"
+PASS = "1234"
+
+# INIT EXCEL
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
@@ -25,115 +31,155 @@ def init_excel():
 
 init_excel()
 
-# 🔹 CITEȘTE DATE
-def citeste_curse():
+# LOGIN PAGE
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user = request.form.get("user")
+        password = request.form.get("pass")
+
+        if user == USER and password == PASS:
+            session["login"] = True
+            return redirect("/")
+        else:
+            return "Login greșit"
+
+    return '''
+    <h2>Login</h2>
+    <form method="post">
+        User: <input name="user"><br><br>
+        Parola: <input name="pass" type="password"><br><br>
+        <button type="submit">Login</button>
+    </form>
+    '''
+
+# PAGINA PRINCIPALA
+@app.route("/")
+def index():
+    if not session.get("login"):
+        return redirect("/login")
+
     wb = load_workbook(FILE)
     ws = wb.active
 
-    curse = []
-
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
-            continue
-
-        curse.append({
-            "id": i - 1,
-            "nr_auto": row[0] or "",
-            "data": row[1] or "",
-            "locatie_plecare": row[2] or "",
-            "locatie_sosire": row[3] or "",
-            "km_parcurs": str(row[4] or "")
-        })
-
-    return curse
-
-# 🔹 PAGINA PRINCIPALĂ
-@app.route("/")
-def index():
-    curse = citeste_curse()
-
-    html = """
-    <h2 style='text-align:center'>Raport curse Flota Comteleprest</h2>
-
-    <div style='text-align:center; margin-bottom:20px;'>
-        <a href='/download'>
-            <button style='padding:10px 20px;'>⬇ Export Excel</button>
-        </a>
-    </div>
-
-    <table border='1' cellpadding='8' style='width:100%; border-collapse:collapse;'>
-    <tr style='background:#ddd'>
-        <th>ID</th>
-        <th>Nr Auto</th>
-        <th>Data</th>
-        <th>Locatie Plecare</th>
-        <th>Locatie Sosire</th>
-        <th>Km Parcurs</th>
-    </tr>
-    """
-
-    for c in curse:
-        html += f"""
+    rows = ""
+    for i, row in enumerate(ws.iter_rows(min_row=2, values_only=True)):
+        rows += f"""
         <tr>
-            <td>{c['id']}</td>
-            <td>{c['nr_auto']}</td>
-            <td>{c['data']}</td>
-            <td>{c['locatie_plecare']}</td>
-            <td>{c['locatie_sosire']}</td>
-            <td>{c['km_parcurs']}</td>
+            <td>{i}</td>
+            <td>{row[0]}</td>
+            <td>{row[1]}</td>
+            <td>{row[2]}</td>
+            <td>{row[3]}</td>
+            <td>{row[4]}</td>
+            <td>
+                <a href="/delete/{i}">Șterge</a>
+            </td>
         </tr>
         """
 
-    html += "</table>"
+    return f"""
+    <h2 style="text-align:center;">Raport curse Flota Comteleprest</h2>
 
-    return html
+    <div style="text-align:center; margin:20px;">
+        <a href="/download"><button>⬇ Export Excel</button></a>
+    </div>
 
-# 🔹 API LISTĂ
+    <table border="1" style="width:100%; border-collapse: collapse;">
+        <tr style="background:#ddd;">
+            <th>ID</th>
+            <th>Nr Auto</th>
+            <th>Data</th>
+            <th>Locatie Plecare</th>
+            <th>Locatie Sosire</th>
+            <th>Km Parcurs</th>
+            <th>Actiune</th>
+        </tr>
+        {rows}
+    </table>
+    """
+
+# ADAUGARE CURSA (ANDROID)
+@app.route("/api/adauga", methods=["POST"])
+def adauga():
+    data = request.json
+
+    wb = load_workbook(FILE)
+    ws = wb.active
+
+    ws.append([
+        data.get("nr_auto"),
+        data.get("data"),
+        data.get("locatie_plecare"),
+        data.get("locatie_sosire"),
+        data.get("km_parcurs")
+    ])
+
+    wb.save(FILE)
+
+    return jsonify({"status": "ok"})
+
+# LISTA API
 @app.route("/api/curse")
-def api_curse():
-    return jsonify(citeste_curse())
+def lista():
+    wb = load_workbook(FILE)
+    ws = wb.active
 
-# 🔹 ADAUGĂ CURSĂ
-@app.route("/adauga_cursa", methods=["POST"])
-def adauga_cursa():
-    try:
-        data = request.get_json(force=True)
+    data = []
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        data.append({
+            "nr_auto": row[0],
+            "data": row[1],
+            "locatie_plecare": row[2],
+            "locatie_sosire": row[3],
+            "km_parcurs": row[4]
+        })
 
-        wb = load_workbook(FILE)
-        ws = wb.active
+    return jsonify(data)
 
-        ws.append([
-            data.get("nrAuto"),
-            data.get("data"),
-            data.get("locatiePlecare"),
-            data.get("locatieSosire"),
-            data.get("kmParcurs")
-        ])
+# STERGERE
+@app.route("/delete/<int:id>")
+def delete(id):
+    wb = load_workbook(FILE)
+    ws = wb.active
 
-        wb.save(FILE)
+    ws.delete_rows(id + 2)
 
-        return {"status": "ok"}
+    wb.save(FILE)
+    return redirect("/")
 
-    except Exception as e:
-        print("EROARE:", e)
-        return {"status": "error"}
-
-# 🔹 DOWNLOAD EXCEL (FIXAT 100%)
+# EXPORT EXCEL PROFESIONAL
 @app.route("/download")
 def download():
-    try:
-        if not os.path.exists(FILE):
-            return "Fisierul nu exista", 404
+    wb = load_workbook(FILE)
+    ws = wb.active
 
-        return send_file(
-            FILE,
-            as_attachment=True,
-            download_name="Raport_Curse_Comteleprest.xlsx"
-        )
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center")
+    border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    )
 
-    except Exception as e:
-        return f"Eroare download: {e}"
+    for row in ws.iter_rows():
+        for cell in row:
+            cell.border = border
+            cell.alignment = center
 
-# 🔹 START SERVER
+    for cell in ws[1]:
+        cell.font = bold
+
+    ws.column_dimensions["A"].width = 20
+    ws.column_dimensions["B"].width = 15
+    ws.column_dimensions["C"].width = 40
+    ws.column_dimensions["D"].width = 40
+    ws.column_dimensions["E"].width = 15
+
+    wb.save(FILE)
+
+    return send_file(FILE, as_attachment=True)
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run()
