@@ -34,7 +34,7 @@ init_excel()
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if request.form["user"] == USER and request.form["pass"] == PASS:
+        if request.form.get("user") == USER and request.form.get("pass") == PASS:
             session["login"] = True
             return redirect("/")
         return "Date incorecte"
@@ -113,26 +113,37 @@ def index():
     </html>
     """
 
-# ADAUGARE
+# ADAUGARE CURSA (FIX IMPORTANT AICI)
 @app.route("/api/adauga", methods=["POST"])
 def add():
-    data = request.json
+    try:
+        data = request.json
 
-    wb = load_workbook(FILE)
-    ws = wb.active
+        nr_auto = data.get("nr_auto") or data.get("nrAuto")
+        data_cursa = data.get("data")
+        plecare = data.get("locatie_plecare") or data.get("locPlecare")
+        sosire = data.get("locatie_sosire") or data.get("locSosire")
+        km = data.get("km_parcurs") or data.get("km")
 
-    ws.append([
-        data["nr_auto"],
-        data["data"],
-        data["locatie_plecare"],
-        data["locatie_sosire"],
-        data["km_parcurs"]
-    ])
+        wb = load_workbook(FILE)
+        ws = wb.active
 
-    wb.save(FILE)
-    return jsonify({"status": "ok"})
+        ws.append([
+            nr_auto,
+            data_cursa,
+            plecare,
+            sosire,
+            km
+        ])
 
-# DELETE
+        wb.save(FILE)
+
+        return jsonify({"status": "ok"})
+
+    except Exception as e:
+        return jsonify({"error": str(e)})
+
+# STERGERE
 @app.route("/delete/<int:id>")
 def delete(id):
     wb = load_workbook(FILE)
@@ -153,6 +164,13 @@ def download():
     bold = Font(bold=True, color="FFFFFF")
     center = Alignment(horizontal="center")
 
+    border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    )
+
     for cell in ws[1]:
         cell.fill = header_fill
         cell.font = bold
@@ -161,6 +179,7 @@ def download():
     for row in ws.iter_rows():
         for cell in row:
             cell.alignment = center
+            cell.border = border
 
     ws.column_dimensions["A"].width = 20
     ws.column_dimensions["B"].width = 15
