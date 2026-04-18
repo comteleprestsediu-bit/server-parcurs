@@ -48,16 +48,20 @@ def citeste_curse():
 
     return curse
 
-# 🔹 PAGINA PRINCIPALĂ (WEB)
+# 🔹 PAGINA PRINCIPALĂ
 @app.route("/")
 def index():
     curse = citeste_curse()
 
     html = """
     <h2 style='text-align:center;'>Raport curse Flota Comteleprest</h2>
-    <div style='text-align:center;margin-bottom:10px;'>
-        <a href="/download"><button>⬇️ Export Excel</button></a>
+
+    <div style='text-align:center;margin-bottom:15px;'>
+        <a href="/download">
+            <button style='padding:10px 20px;'>⬇️ Export Excel</button>
+        </a>
     </div>
+
     <table border='1' cellpadding='8' style='border-collapse:collapse;width:100%;'>
     """
 
@@ -101,12 +105,12 @@ def index():
 
     return html
 
-# 🔹 API LISTĂ
+# 🔹 API
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
 
-# 🔹 ADAUGĂ CURSĂ
+# 🔹 ADAUGĂ
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -148,34 +152,43 @@ def sterge_cursa(id):
         print("EROARE:", e)
         return {"status": "error"}
 
-# 🔹 EXPORT EXCEL PROFESIONAL
+# 🔹 EXPORT EXCEL (FĂRĂ BUG!)
 @app.route("/download")
 def download_excel():
     try:
+        export_file = "raport_curse.xlsx"
+
         wb = load_workbook(FILE)
         ws = wb.active
 
-        # Titlu
-        ws.insert_rows(1)
-        ws["A1"] = "Raport curse Flota Comteleprest"
-        ws.merge_cells("A1:E1")
+        # 🔹 workbook nou (IMPORTANT)
+        new_wb = Workbook()
+        new_ws = new_wb.active
 
-        ws["A1"].font = Font(size=16, bold=True)
-        ws["A1"].alignment = Alignment(horizontal="center")
+        # 🔹 titlu
+        new_ws["A1"] = "Raport curse Flota Comteleprest"
+        new_ws.merge_cells("A1:E1")
 
-        # Header bold
-        for cell in ws[2]:
+        new_ws["A1"].font = Font(size=16, bold=True)
+        new_ws["A1"].alignment = Alignment(horizontal="center")
+
+        # 🔹 copiere date
+        for i, row in enumerate(ws.iter_rows(values_only=True), start=2):
+            for j, value in enumerate(row, start=1):
+                new_ws.cell(row=i, column=j, value=value)
+
+        # 🔹 header bold
+        for cell in new_ws[2]:
             cell.font = Font(bold=True)
 
-        # Lățime coloane
-        ws.column_dimensions["A"].width = 15
-        ws.column_dimensions["B"].width = 15
-        ws.column_dimensions["C"].width = 30
-        ws.column_dimensions["D"].width = 30
-        ws.column_dimensions["E"].width = 15
+        # 🔹 dimensiuni coloane
+        new_ws.column_dimensions["A"].width = 15
+        new_ws.column_dimensions["B"].width = 15
+        new_ws.column_dimensions["C"].width = 35
+        new_ws.column_dimensions["D"].width = 35
+        new_ws.column_dimensions["E"].width = 15
 
-        export_file = "raport_curse.xlsx"
-        wb.save(export_file)
+        new_wb.save(export_file)
 
         return send_file(export_file, as_attachment=True)
 
@@ -183,7 +196,6 @@ def download_excel():
         print("EROARE DOWNLOAD:", e)
         return "Eroare export Excel", 500
 
-
-# 🔹 START SERVER
+# 🔹 START
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
