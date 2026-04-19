@@ -20,10 +20,9 @@ def init_excel():
         ws = wb.active
 
         ws.merge_cells("A1:G1")
-        title = ws["A1"]
-        title.value = "Foaie de parcurs Flota Comteleprest"
-        title.font = Font(size=14, bold=True)
-        title.alignment = Alignment(horizontal="center")
+        ws["A1"] = "Foaie de parcurs Flota Comteleprest"
+        ws["A1"].font = Font(size=14, bold=True)
+        ws["A1"].alignment = Alignment(horizontal="center")
 
         headers = [
             "nr_auto",
@@ -40,72 +39,44 @@ def init_excel():
         fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
         font = Font(bold=True, color="FFFFFF")
 
-        for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=2, column=col)
-            cell.fill = fill
-            cell.font = font
-            cell.alignment = Alignment(horizontal="center")
+        for col in range(1, len(headers)+1):
+            c = ws.cell(row=2, column=col)
+            c.fill = fill
+            c.font = font
+            c.alignment = Alignment(horizontal="center")
+
+        widths = [15, 15, 12, 40, 12, 40, 15]
+        for i, w in enumerate(widths, 1):
+            ws.column_dimensions[chr(64+i)].width = w
 
         wb.save(FILE)
 
 init_excel()
 
 
-# 🔹 TOTAL PE ZI
-def calculeaza_total_pe_zi(ws):
-    rows = list(ws.iter_rows(values_only=True))
-
-    for i in range(len(rows), 2, -1):
-        if rows[i-1][0] == "TOTAL":
-            ws.delete_rows(i)
-
-    current_date = None
-    total = 0
-
-    for i in range(3, ws.max_row + 1):
-        data = ws.cell(i, 2).value
-        km = ws.cell(i, 7).value
-
-        km = float(km) if km not in (None, "", " ") else 0
-
-        if current_date is None:
-            current_date = data
-
-        if data != current_date:
-            ws.insert_rows(i)
-            ws.cell(i, 1, "TOTAL")
-            ws.cell(i, 2, current_date)
-            ws.cell(i, 7, total)
-
-            current_date = data
-            total = 0
-
-        total += km
-
-    if current_date:
-        ws.append(["TOTAL", current_date, "", "", "", "", total])
-
-
-# 🔹 CITESTE CURSE (SINCRONIZAT PERFECT)
+# 🔹 CITIRE CURSE (fără TOTAL)
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
 
     curse = []
 
-    for row in ws.iter_rows(min_row=3, values_only=True):
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i < 2:
+            continue
+
         if row[0] == "TOTAL":
             continue
 
         curse.append({
-            "id": len(curse),
+            "id": i - 2,
             "nr_auto": row[0] or "",
             "data": row[1] or "",
-            "km_plecare": row[2] or "",
+            "km_plecare": str(row[2] or ""),
             "locatie_plecare": row[3] or "",
-            "km_sosire": row[4] or "",
+            "km_sosire": str(row[4] or ""),
             "locatie_sosire": row[5] or "",
-            "km_parcurs": row[6] or ""
+            "km_parcurs": str(row[6] or "")
         })
 
     return curse
@@ -121,8 +92,7 @@ def login():
         if USERS.get(user) == parola:
             session["user"] = user
             return redirect("/")
-        else:
-            return "Login greșit"
+        return "Login greșit"
 
     return """
     <html>
@@ -134,8 +104,8 @@ def login():
         <div class="card p-4 shadow" style="max-width:400px;margin:auto;">
             <h3>Login</h3>
             <form method="post">
-                <input name="user" class="form-control mb-2">
-                <input name="parola" type="password" class="form-control mb-2">
+                <input name="user" class="form-control mb-2" placeholder="User">
+                <input name="parola" type="password" class="form-control mb-2" placeholder="Parola">
                 <button class="btn btn-primary w-100">Login</button>
             </form>
         </div>
@@ -145,13 +115,14 @@ def login():
     """
 
 
+# 🔓 LOGOUT
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
 
-# 🔥 PAGINA PRINCIPALA (TOATE COLOANELE)
+# 🔥 PAGINA PRINCIPALĂ
 @app.route("/")
 def index():
     if "user" not in session:
@@ -159,62 +130,91 @@ def index():
 
     curse = citeste_curse()
 
-    total = 0
-    for c in curse:
-        try:
-            total += float(c["km_parcurs"])
-        except:
-            pass
-
     html = """
     <html>
     <head>
+        <title>Raport curse</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
-    <body>
+
+    <body class="bg-light">
     <div class="container mt-4">
-        <div class="card p-4 shadow">
+    <div class="card p-4 shadow">
 
-        <div class="d-flex justify-content-between">
-            <h3>🚗 Raport curse</h3>
-            <a href="/logout" class="btn btn-secondary">Logout</a>
-        </div>
+    <div class="d-flex justify-content-between">
+        <h3>🚗 Raport curse</h3>
+        <a href="/logout" class="btn btn-secondary">Logout</a>
+    </div>
 
-        <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Excel</a>
+    <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Descarcă Excel</a>
 
-        <table class="table table-striped table-bordered">
+    <input id="search" class="form-control mb-3" placeholder="Caută...">
+
+    <table class="table table-striped table-hover" id="tabel">
         <thead class="table-dark">
         <tr>
-        <th>ID</th>
-        <th>Nr Auto</th>
-        <th>Data</th>
-        <th>Km Plecare</th>
-        <th>Locatie Plecare</th>
-        <th>Km Sosire</th>
-        <th>Locatie Sosire</th>
-        <th>Km Parcurs</th>
+            <th>ID</th>
+            <th>Nr Auto</th>
+            <th>Data</th>
+            <th>Km Plecare</th>
+            <th>Plecare</th>
+            <th>Km Sosire</th>
+            <th>Sosire</th>
+            <th>Km Parcurs</th>
+            <th>Șterge</th>
         </tr>
-        </thead><tbody>
+        </thead>
+        <tbody>
     """
 
     for c in curse:
         html += f"""
         <tr>
-        <td>{c['id']}</td>
-        <td>{c['nr_auto']}</td>
-        <td>{c['data']}</td>
-        <td>{c['km_plecare']}</td>
-        <td>{c['locatie_plecare']}</td>
-        <td>{c['km_sosire']}</td>
-        <td>{c['locatie_sosire']}</td>
-        <td>{c['km_parcurs']}</td>
+            <td>{c['id']}</td>
+            <td>{c['nr_auto']}</td>
+            <td>{c['data']}</td>
+            <td>{c['km_plecare']}</td>
+            <td>{c['locatie_plecare']}</td>
+            <td>{c['km_sosire']}</td>
+            <td>{c['locatie_sosire']}</td>
+            <td>{c['km_parcurs']}</td>
+            <td><button onclick="sterge({c['id']})" class="btn btn-danger btn-sm">🗑</button></td>
         </tr>
         """
 
-    html += f"""
-    </tbody></table>
-    <h5>Total KM: {total}</h5>
-    </div></div></body></html>
+    html += """
+        </tbody>
+    </table>
+
+    <h5 id="total"></h5>
+
+    </div>
+    </div>
+
+    <script>
+    document.getElementById("search").addEventListener("keyup", function(){
+        let f = this.value.toLowerCase();
+        document.querySelectorAll("#tabel tbody tr").forEach(r=>{
+            r.style.display = r.innerText.toLowerCase().includes(f) ? "" : "none";
+        });
+    });
+
+    let total = 0;
+    document.querySelectorAll("#tabel tbody tr").forEach(r=>{
+        let km = parseFloat(r.cells[7].innerText) || 0;
+        total += km;
+    });
+    document.getElementById("total").innerText = "Total km: " + total;
+
+    function sterge(id){
+        fetch("/sterge_cursa/"+id,{method:"DELETE"})
+        .then(()=>location.reload());
+    }
+    </script>
+
+    </body>
+    </html>
     """
 
     return html
@@ -226,24 +226,27 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 ADAUGARE
+# 🔹 API LISTĂ (FIX IMPORTANT)
+@app.route("/api/curse", methods=["GET"])
+def api_curse():
+    return jsonify(citeste_curse())
+
+
+# 🔹 ADAUGARE CURSĂ (FIX TELEFON)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
         data = request.get_json(silent=True)
-
         if not data:
             data = request.form
 
-        nr_auto = data.get("nrAuto") or data.get("nr_auto", "")
+        nr_auto = data.get("nrAuto", "")
         data_cursa = data.get("data", "")
-        plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
-        sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
-
-        km_parcurs = data.get("kmParcurs") or data.get("km_parcurs")
-
-        km_plecare = data.get("kmPlecare") or ""
-        km_sosire = data.get("kmSosire") or ""
+        plecare = data.get("locatiePlecare", "")
+        sosire = data.get("locatieSosire", "")
+        km_plecare = data.get("kmPlecare", "")
+        km_sosire = data.get("kmSosire", "")
+        km_parcurs = data.get("kmParcurs", "")
 
         wb = load_workbook(FILE)
         ws = wb.active
@@ -258,8 +261,6 @@ def adauga_cursa():
             km_parcurs
         ])
 
-        calculeaza_total_pe_zi(ws)
-
         wb.save(FILE)
 
         return {"status": "ok"}
@@ -269,6 +270,15 @@ def adauga_cursa():
         return {"status": "error"}
 
 
-# 🔹 START
+# 🔥 ȘTERGERE
+@app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
+def sterge_cursa(id):
+    wb = load_workbook(FILE)
+    ws = wb.active
+    ws.delete_rows(id + 3)
+    wb.save(FILE)
+    return {"status": "deleted"}
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
