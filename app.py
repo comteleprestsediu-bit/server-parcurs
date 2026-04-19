@@ -65,7 +65,9 @@ def calculeaza_total_pe_zi(ws):
 
     for i in range(3, ws.max_row + 1):
         data = ws.cell(i, 2).value
-        km = ws.cell(i, 7).value or 0
+        km = ws.cell(i, 7).value
+
+        km = float(km) if km not in (None, "", " ") else 0
 
         if current_date is None:
             current_date = data
@@ -79,33 +81,30 @@ def calculeaza_total_pe_zi(ws):
             current_date = data
             total = 0
 
-        total += float(km)
+        total += km
 
     if current_date:
         ws.append(["TOTAL", current_date, "", "", "", "", total])
 
 
-# 🔹 CITESTE CURSE
+# 🔹 CITESTE CURSE (CORECT)
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
 
     curse = []
 
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i < 2:
-            continue
-
+    for row in ws.iter_rows(min_row=3, values_only=True):
         if row[0] == "TOTAL":
             continue
 
         curse.append({
-            "id": i - 2,
+            "id": len(curse),
             "nr_auto": row[0] or "",
             "data": row[1] or "",
             "locatie_plecare": row[3] or "",
             "locatie_sosire": row[5] or "",
-            "km_parcurs": str(row[6] or "0")
+            "km_parcurs": str(row[6] or "")
         })
 
     return curse
@@ -151,13 +150,20 @@ def logout():
     return redirect("/login")
 
 
-# 🔥 PAGINA
+# 🔥 PAGINA PRINCIPALA
 @app.route("/")
 def index():
     if "user" not in session:
         return redirect("/login")
 
     curse = citeste_curse()
+
+    total = 0
+    for c in curse:
+        try:
+            total += float(c["km_parcurs"])
+        except:
+            pass
 
     html = """
     <html>
@@ -183,10 +189,7 @@ def index():
         </thead><tbody>
     """
 
-    total = 0
-
     for c in curse:
-        total += float(c["km_parcurs"])
         html += f"""
         <tr>
         <td>{c['id']}</td>
@@ -213,7 +216,7 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 ADAUGARE (CORECT FINAL)
+# 🔹 ADAUGARE CURSA (100% COMPATIBIL TELEFON)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -227,18 +230,11 @@ def adauga_cursa():
         plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
         sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
 
-        km_plecare = data.get("kmPlecare")
-        km_sosire = data.get("kmSosire")
-        km_direct = data.get("kmParcurs") or data.get("km_parcurs")
+        km_parcurs = data.get("kmParcurs") or data.get("km_parcurs")
 
-        if km_plecare and km_sosire:
-            km_plecare = float(km_plecare)
-            km_sosire = float(km_sosire)
-            km = km_sosire - km_plecare
-        else:
-            km = float(km_direct or 0)
-            km_plecare = ""
-            km_sosire = ""
+        # NU forțăm valori
+        km_plecare = data.get("kmPlecare") or ""
+        km_sosire = data.get("kmSosire") or ""
 
         wb = load_workbook(FILE)
         ws = wb.active
@@ -250,7 +246,7 @@ def adauga_cursa():
             plecare,
             km_sosire,
             sosire,
-            km
+            km_parcurs
         ])
 
         calculeaza_total_pe_zi(ws)
