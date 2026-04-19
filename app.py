@@ -14,59 +14,42 @@ USERS = {
     "sofer": "1234"
 }
 
-# 🔹 INIT EXCEL
+# 🔹 INIT
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
         ws = wb.active
-
-        # TITLU
-        ws.merge_cells("A1:G1")
-        ws["A1"] = "Foaie de parcurs Flota Comteleprest"
-
-        # HEADER
-        ws.append([
-            "nr_auto",
-            "data",
-            "locatie_plecare",
-            "locatie_sosire",
-            "km_plecare",
-            "km_sosire",
-            "km_parcurs"
-        ])
-
-        stilizeaza_excel(ws)
         wb.save(FILE)
 
 init_excel()
 
-# 🔹 STIL PROFESIONAL
-def stilizeaza_excel(ws):
-    thin = Border(
-        left=Side(style='thin'),
-        right=Side(style='thin'),
-        top=Side(style='thin'),
-        bottom=Side(style='thin')
-    )
+# 🔹 STIL
+def stilizeaza(ws):
+    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
+                  top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # TITLU
+    # titlu
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "Foaie de parcurs Flota Comteleprest"
     ws["A1"].font = Font(size=14, bold=True)
     ws["A1"].alignment = Alignment(horizontal="center")
 
-    # HEADER
-    for col in range(1, 8):
-        cell = ws.cell(row=2, column=col)
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = PatternFill(start_color="4F81BD", fill_type="solid")
-        cell.alignment = Alignment(horizontal="center")
-        cell.border = thin
+    # header
+    headers = ["nr_auto","data","locatie_plecare","locatie_sosire","km_plecare","km_sosire","km_parcurs"]
+    ws.append(headers)
 
-    # DATE + TOTAL
+    for col in range(1, 8):
+        c = ws.cell(2, col)
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill(start_color="4F81BD", fill_type="solid")
+        c.alignment = Alignment(horizontal="center")
+        c.border = thin
+
+    # borduri + total
     for row in ws.iter_rows(min_row=3, max_row=ws.max_row, max_col=7):
         for cell in row:
             cell.border = thin
-
-            if cell.column in [5, 6, 7]:
+            if cell.column in [5,6,7]:
                 cell.alignment = Alignment(horizontal="right")
 
         if row[0].value == "TOTAL":
@@ -74,161 +57,152 @@ def stilizeaza_excel(ws):
                 cell.font = Font(bold=True)
                 cell.fill = PatternFill(start_color="FFF2CC", fill_type="solid")
 
-    # AUTO WIDTH
-    for col in range(1, 8):
-        max_length = 0
+    # auto width
+    for col in range(1,8):
+        max_len = 0
         col_letter = get_column_letter(col)
-
         for cell in ws[col_letter]:
             if cell.value:
-                max_length = max(max_length, len(str(cell.value)))
-
-        ws.column_dimensions[col_letter].width = max_length + 2
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = max_len + 2
 
     ws.freeze_panes = "A3"
 
-# 🔹 CALCUL TOTAL PE ZI
-def calculeaza_totaluri(ws):
-    rows = list(ws.iter_rows(values_only=True))
+# 🔹 CITEȘTE
+def citeste():
+    if not os.path.exists(FILE):
+        return []
 
-    # Șterge TOTAL vechi
-    for i in range(len(rows), 2, -1):
-        if rows[i-1][0] == "TOTAL":
-            ws.delete_rows(i)
-
-    data_curenta = None
-    total = 0
-
-    for i in range(3, ws.max_row + 1):
-        data = ws.cell(i, 2).value
-        km = ws.cell(i, 7).value or 0
-
-        if data_curenta is None:
-            data_curenta = data
-
-        if data != data_curenta:
-            ws.insert_rows(i)
-            ws.cell(i, 1, "TOTAL")
-            ws.cell(i, 2, data_curenta)
-            ws.cell(i, 7, total)
-
-            data_curenta = data
-            total = 0
-
-        total += float(km)
-
-    # ULTIMUL TOTAL
-    ws.append(["TOTAL", data_curenta, "", "", "", "", total])
-
-# 🔹 CITIRE
-def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
 
     curse = []
 
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i < 2:
-            continue
-
+    for row in ws.iter_rows(min_row=3, values_only=True):
         if row[0] == "TOTAL":
             continue
 
         curse.append({
-            "id": i - 2,
-            "nr_auto": row[0] or "",
-            "data": row[1] or "",
-            "locatie_plecare": row[2] or "",
-            "locatie_sosire": row[3] or "",
-            "km_plecare": row[4] or "",
-            "km_sosire": row[5] or "",
-            "km_parcurs": row[6] or ""
+            "nr_auto": row[0],
+            "data": row[1],
+            "locatie_plecare": row[2],
+            "locatie_sosire": row[3],
+            "km_plecare": row[4],
+            "km_sosire": row[5],
+            "km_parcurs": row[6]
         })
 
     return curse
 
+# 🔹 RESCRIE COMPLET (SOLUȚIA CHEIE)
+def rescrie_excel(curse):
+    wb = Workbook()
+    ws = wb.active
+
+    # titlu + header
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "Foaie de parcurs Flota Comteleprest"
+
+    ws.append([
+        "nr_auto","data","locatie_plecare","locatie_sosire",
+        "km_plecare","km_sosire","km_parcurs"
+    ])
+
+    # grupare pe zile
+    cur_day = None
+    total = 0
+
+    for c in curse:
+        km_parcurs = float(c["km_sosire"]) - float(c["km_plecare"])
+
+        if cur_day is None:
+            cur_day = c["data"]
+
+        if c["data"] != cur_day:
+            ws.append(["TOTAL", cur_day, "", "", "", "", total])
+            total = 0
+            cur_day = c["data"]
+
+        ws.append([
+            c["nr_auto"],
+            c["data"],
+            c["locatie_plecare"],
+            c["locatie_sosire"],
+            c["km_plecare"],
+            c["km_sosire"],
+            km_parcurs
+        ])
+
+        total += km_parcurs
+
+    if cur_day:
+        ws.append(["TOTAL", cur_day, "", "", "", "", total])
+
+    stilizeaza(ws)
+    wb.save(FILE)
+
 # 🔐 LOGIN
-@app.route("/login", methods=["GET", "POST"])
+@app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
-        user = request.form.get("user")
-        parola = request.form.get("parola")
-
-        if USERS.get(user) == parola:
-            session["user"] = user
+        if USERS.get(request.form["user"]) == request.form["parola"]:
+            session["user"] = request.form["user"]
             return redirect("/")
-        return "Login greșit"
+        return "Login gresit"
 
-    return """
-    <html><body style="font-family:Arial;padding:50px">
-    <h2>Login</h2>
-    <form method="post">
-    User: <input name="user"><br><br>
-    Parola: <input name="parola" type="password"><br><br>
-    <button>Login</button>
-    </form></body></html>
-    """
+    return "<form method=post>User:<input name=user><br>Parola:<input name=parola><br><button>Login</button></form>"
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-# 🔹 PAGINA PRINCIPALĂ
+# 🔹 PAGINA
 @app.route("/")
 def index():
     if "user" not in session:
         return redirect("/login")
 
-    curse = citeste_curse()
+    curse = citeste()
 
-    html = "<h2>Raport curse</h2><table border=1><tr><th>ID</th><th>Auto</th><th>Data</th><th>Plecare</th><th>Sosire</th><th>Km</th></tr>"
+    html = "<h2>Raport curse</h2><table border=1>"
+    html += "<tr><th>Auto</th><th>Data</th><th>Plecare</th><th>Sosire</th><th>Km</th></tr>"
 
     for c in curse:
-        html += f"<tr><td>{c['id']}</td><td>{c['nr_auto']}</td><td>{c['data']}</td><td>{c['locatie_plecare']}</td><td>{c['locatie_sosire']}</td><td>{c['km_parcurs']}</td></tr>"
+        html += f"<tr><td>{c['nr_auto']}</td><td>{c['data']}</td><td>{c['locatie_plecare']}</td><td>{c['locatie_sosire']}</td><td>{c['km_parcurs']}</td></tr>"
 
-    html += "</table><br><a href='/download'>Descarca Excel</a>"
-
+    html += "</table><br><a href='/download'>Download Excel</a>"
     return html
 
 # 🔹 DOWNLOAD
 @app.route("/download")
-def download_excel():
+def download():
     return send_file(FILE, as_attachment=True)
 
-# 🔹 ADAUGĂ CURSĂ
+# 🔹 ADAUGĂ
 @app.route("/adauga_cursa", methods=["POST"])
-def adauga_cursa():
+def adauga():
     try:
         data = request.get_json(force=True)
 
-        wb = load_workbook(FILE)
-        ws = wb.active
+        curse = citeste()
 
-        km_plecare = float(data.get("kmPlecare", 0))
-        km_sosire = float(data.get("kmSosire", 0))
-        km_parcurs = km_sosire - km_plecare
+        curse.append({
+            "nr_auto": data.get("nrAuto"),
+            "data": data.get("data"),
+            "locatie_plecare": data.get("locatiePlecare"),
+            "locatie_sosire": data.get("locatieSosire"),
+            "km_plecare": float(data.get("kmPlecare",0)),
+            "km_sosire": float(data.get("kmSosire",0))
+        })
 
-        ws.append([
-            data.get("nrAuto", ""),
-            data.get("data", ""),
-            data.get("locatiePlecare", ""),
-            data.get("locatieSosire", ""),
-            km_plecare,
-            km_sosire,
-            km_parcurs
-        ])
+        rescrie_excel(curse)
 
-        calculeaza_totaluri(ws)
-        stilizeaza_excel(ws)
-
-        wb.save(FILE)
-
-        return {"status": "ok"}
+        return {"status":"ok"}
 
     except Exception as e:
         print("EROARE:", e)
-        return {"status": "error"}
+        return {"status":"error"}
 
 # 🔹 START
 if __name__ == "__main__":
