@@ -14,12 +14,20 @@ USERS = {
     "sofer": "1234"
 }
 
-# 🔹 INIT EXCEL (PRO STYLE)
+# 🔹 INIT EXCEL (CU TITLU + STIL)
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
         ws = wb.active
 
+        # 🔵 TITLU
+        ws.merge_cells("A1:E1")
+        title = ws["A1"]
+        title.value = "Foaie de parcurs Flota Comteleprest"
+        title.font = Font(size=14, bold=True)
+        title.alignment = Alignment(horizontal="center")
+
+        # 🔵 HEADER (pe rândul 2)
         headers = [
             "nr_auto",
             "data",
@@ -30,17 +38,16 @@ def init_excel():
 
         ws.append(headers)
 
-        # 🎨 Header style
         fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
         font = Font(bold=True, color="FFFFFF")
 
         for col in range(1, len(headers) + 1):
-            cell = ws.cell(row=1, column=col)
+            cell = ws.cell(row=2, column=col)
             cell.fill = fill
             cell.font = font
             cell.alignment = Alignment(horizontal="center")
 
-        # 📏 Column widths
+        # 📏 Lățime coloane
         widths = [15, 15, 40, 40, 15]
         for i, width in enumerate(widths, start=1):
             ws.column_dimensions[chr(64 + i)].width = width
@@ -50,7 +57,7 @@ def init_excel():
 init_excel()
 
 
-# 🔹 READ DATA
+# 🔹 CITEȘTE DATE
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
@@ -58,11 +65,11 @@ def citeste_curse():
     curse = []
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i == 0:
+        if i < 2:  # sari peste titlu + header
             continue
 
         curse.append({
-            "id": i - 1,
+            "id": i - 2,
             "nr_auto": row[0] or "",
             "data": row[1] or "",
             "locatie_plecare": row[2] or "",
@@ -117,7 +124,7 @@ def logout():
     return redirect("/login")
 
 
-# 🔥 MAIN PAGE
+# 🔥 PAGINA PRINCIPALĂ
 @app.route("/")
 def index():
     if "user" not in session:
@@ -232,19 +239,19 @@ def index():
     return html
 
 
-# 🔹 DOWNLOAD EXCEL
+# 🔹 DOWNLOAD
 @app.route("/download")
 def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 API LIST
+# 🔹 API
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
 
 
-# 🔹 ADD CURSA (SAFE + FIX)
+# 🔹 ADAUGĂ CURSĂ
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -261,7 +268,7 @@ def adauga_cursa():
             data.get("kmParcurs", "")
         ])
 
-        # 📏 AUTO RESIZE
+        # AUTO RESIZE
         for col in ws.columns:
             max_length = 0
             col_letter = col[0].column_letter
@@ -284,14 +291,14 @@ def adauga_cursa():
         return {"status": "error"}
 
 
-# 🔥 DELETE
+# 🔥 ȘTERGE
 @app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
 def sterge_cursa(id):
     try:
         wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.delete_rows(id + 2)
+        ws.delete_rows(id + 3)  # +3 pentru titlu + header
 
         wb.save(FILE)
 
