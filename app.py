@@ -28,10 +28,10 @@ def init_excel():
         headers = [
             "nr_auto",
             "data",
-            "locatie_plecare",
-            "locatie_sosire",
             "km_plecare",
+            "locatie_plecare",
             "km_sosire",
+            "locatie_sosire",
             "km_parcurs"
         ]
 
@@ -55,6 +55,7 @@ init_excel()
 def calculeaza_total_pe_zi(ws):
     rows = list(ws.iter_rows(values_only=True))
 
+    # șterge TOTAL vechi
     for i in range(len(rows), 2, -1):
         if rows[i-1][0] == "TOTAL":
             ws.delete_rows(i)
@@ -102,8 +103,8 @@ def citeste_curse():
             "id": i - 2,
             "nr_auto": row[0] or "",
             "data": row[1] or "",
-            "locatie_plecare": row[2] or "",
-            "locatie_sosire": row[3] or "",
+            "locatie_plecare": row[3] or "",
+            "locatie_sosire": row[5] or "",
             "km_parcurs": str(row[6] or "0")
         })
 
@@ -129,32 +130,28 @@ def login():
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
     <body class="bg-light">
-
     <div class="container mt-5">
         <div class="card p-4 shadow" style="max-width:400px;margin:auto;">
-            <h3 class="mb-3">Login</h3>
-
+            <h3>Login</h3>
             <form method="post">
-                <input name="user" class="form-control mb-2" placeholder="User">
-                <input name="parola" type="password" class="form-control mb-2" placeholder="Parola">
+                <input name="user" class="form-control mb-2">
+                <input name="parola" type="password" class="form-control mb-2">
                 <button class="btn btn-primary w-100">Login</button>
             </form>
         </div>
     </div>
-
     </body>
     </html>
     """
 
 
-# 🔓 LOGOUT
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
 
-# 🔥 PAGINA PRINCIPALA
+# 🔥 PAGINA
 @app.route("/")
 def index():
     if "user" not in session:
@@ -165,49 +162,47 @@ def index():
     html = """
     <html>
     <head>
-        <title>Foaie Parcurs</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1">
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     </head>
     <body>
-
     <div class="container mt-4">
-        <div class="card shadow p-4">
+        <div class="card p-4 shadow">
 
-            <div class="d-flex justify-content-between">
-                <h3>🚗 Raport curse</h3>
-                <a href="/logout" class="btn btn-secondary">Logout</a>
-            </div>
+        <div class="d-flex justify-content-between">
+            <h3>🚗 Raport curse</h3>
+            <a href="/logout" class="btn btn-secondary">Logout</a>
+        </div>
 
-            <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Descarcă Excel</a>
+        <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Excel</a>
 
-            <table class="table table-striped">
-                <thead class="table-dark">
-                    <tr>
-                        <th>ID</th>
-                        <th>Nr Auto</th>
-                        <th>Data</th>
-                        <th>Plecare</th>
-                        <th>Sosire</th>
-                        <th>Km</th>
-                    </tr>
-                </thead>
-                <tbody>
+        <table class="table table-striped">
+        <thead class="table-dark">
+        <tr>
+        <th>ID</th><th>Nr Auto</th><th>Data</th><th>Plecare</th><th>Sosire</th><th>Km</th>
+        </tr>
+        </thead><tbody>
     """
 
+    total = 0
+
     for c in curse:
+        total += float(c["km_parcurs"])
         html += f"""
         <tr>
-            <td>{c['id']}</td>
-            <td>{c['nr_auto']}</td>
-            <td>{c['data']}</td>
-            <td>{c['locatie_plecare']}</td>
-            <td>{c['locatie_sosire']}</td>
-            <td>{c['km_parcurs']}</td>
+        <td>{c['id']}</td>
+        <td>{c['nr_auto']}</td>
+        <td>{c['data']}</td>
+        <td>{c['locatie_plecare']}</td>
+        <td>{c['locatie_sosire']}</td>
+        <td>{c['km_parcurs']}</td>
         </tr>
         """
 
-    html += "</tbody></table></div></div></body></html>"
+    html += f"""
+    </tbody></table>
+    <h5>Total KM: {total}</h5>
+    </div></div></body></html>
+    """
 
     return html
 
@@ -218,7 +213,7 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 ADAUGARE CURSA (CORECTATA)
+# 🔹 ADAUGARE (CORECT FINAL)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -232,7 +227,6 @@ def adauga_cursa():
         plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
         sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
 
-        # 🔥 LOGICA CORECTA
         km_plecare = data.get("kmPlecare")
         km_sosire = data.get("kmSosire")
         km_direct = data.get("kmParcurs") or data.get("km_parcurs")
@@ -252,10 +246,10 @@ def adauga_cursa():
         ws.append([
             nr_auto,
             data_cursa,
-            plecare,
-            sosire,
             km_plecare,
+            plecare,
             km_sosire,
+            sosire,
             km
         ])
 
