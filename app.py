@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify, send_file, session, redirect
 from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Font, PatternFill, Alignment
 import os
 
 app = Flask(__name__)
@@ -7,30 +8,49 @@ app.secret_key = "parcurs_secret"
 
 FILE = "curse.xlsx"
 
-# 🔹 USERS (login simplu)
+# 🔹 USERS
 USERS = {
     "admin": "1234",
     "sofer": "1234"
 }
 
-# 🔹 INIT EXCEL
+# 🔹 INIT EXCEL (PRO STYLE)
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
         ws = wb.active
-        ws.append([
+
+        headers = [
             "nr_auto",
             "data",
             "locatie_plecare",
             "locatie_sosire",
             "km_parcurs"
-        ])
+        ]
+
+        ws.append(headers)
+
+        # 🎨 Header style
+        fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+        font = Font(bold=True, color="FFFFFF")
+
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=1, column=col)
+            cell.fill = fill
+            cell.font = font
+            cell.alignment = Alignment(horizontal="center")
+
+        # 📏 Column widths
+        widths = [15, 15, 40, 40, 15]
+        for i, width in enumerate(widths, start=1):
+            ws.column_dimensions[chr(64 + i)].width = width
+
         wb.save(FILE)
 
 init_excel()
 
 
-# 🔹 CITEȘTE DATE
+# 🔹 READ DATA
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
@@ -97,7 +117,7 @@ def logout():
     return redirect("/login")
 
 
-# 🔥 PAGINA PRINCIPALĂ
+# 🔥 MAIN PAGE
 @app.route("/")
 def index():
     if "user" not in session:
@@ -108,7 +128,7 @@ def index():
     html = """
     <html>
     <head>
-        <title>Raport curse</title>
+        <title>Foaie Parcurs</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -126,7 +146,7 @@ def index():
         <div class="card shadow p-4">
 
             <div class="d-flex justify-content-between">
-                <h3>🚗 Raport curse Flota Comteleprest</h3>
+                <h3>🚗 Raport curse</h3>
                 <a href="/logout" class="btn btn-secondary">Logout</a>
             </div>
 
@@ -176,7 +196,6 @@ def index():
     </div>
 
     <script>
-        // SEARCH
         document.getElementById("search").addEventListener("keyup", function() {
             let filter = this.value.toLowerCase();
             let rows = document.querySelectorAll("#tabel tbody tr");
@@ -187,7 +206,6 @@ def index():
             });
         });
 
-        // TOTAL KM
         let total = 0;
         document.querySelectorAll("#tabel tbody tr").forEach(row => {
             let km = row.cells[5].innerText.replace(",", ".");
@@ -196,11 +214,13 @@ def index():
 
         document.getElementById("total").innerText = "Total km: " + total.toFixed(2);
 
-        // DELETE
         function sterge(id) {
             if (!confirm("Ștergi cursa?")) return;
 
-            fetch("/sterge_cursa/" + id, { method: "DELETE" })
+            fetch("/sterge_cursa/" + id, {
+                method: "DELETE"
+            })
+            .then(res => res.json())
             .then(() => location.reload());
         }
     </script>
@@ -212,40 +232,48 @@ def index():
     return html
 
 
-# 🔹 EXPORT EXCEL
+# 🔹 DOWNLOAD EXCEL
 @app.route("/download")
 def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 API LISTĂ
+# 🔹 API LIST
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
 
 
-# 🔥 ADAUGĂ CURSĂ (FIX FINAL AICI)
+# 🔹 ADD CURSA (SAFE + FIX)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
         data = request.get_json(force=True)
 
-        nr_auto = data.get("nrAuto") or data.get("nr_auto") or ""
-        data_cursa = data.get("data") or ""
-        plecare = data.get("locatiePlecare") or data.get("locatie_plecare") or ""
-        sosire = data.get("locatieSosire") or data.get("locatie_sosire") or ""
-        km = data.get("kmParcurs") or data.get("km_parcurs") or ""
-
         wb = load_workbook(FILE)
         ws = wb.active
 
         ws.append([
-            nr_auto,
-            data_cursa,
-            plecare,
-            sosire,
-            km
+            data.get("nrAuto", ""),
+            data.get("data", ""),
+            data.get("locatiePlecare", ""),
+            data.get("locatieSosire", ""),
+            data.get("kmParcurs", "")
         ])
+
+        # 📏 AUTO RESIZE
+        for col in ws.columns:
+            max_length = 0
+            col_letter = col[0].column_letter
+
+            for cell in col:
+                try:
+                    if cell.value:
+                        max_length = max(max_length, len(str(cell.value)))
+                except:
+                    pass
+
+            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
 
         wb.save(FILE)
 
@@ -253,10 +281,10 @@ def adauga_cursa():
 
     except Exception as e:
         print("EROARE:", e)
-        return {"status": "error", "msg": str(e)}
+        return {"status": "error"}
 
 
-# 🔥 ȘTERGE
+# 🔥 DELETE
 @app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
 def sterge_cursa(id):
     try:
@@ -264,12 +292,13 @@ def sterge_cursa(id):
         ws = wb.active
 
         ws.delete_rows(id + 2)
+
         wb.save(FILE)
 
         return {"status": "deleted"}
 
     except Exception as e:
-        print("EROARE:", e)
+        print("EROARE ȘTERGERE:", e)
         return {"status": "error"}
 
 
