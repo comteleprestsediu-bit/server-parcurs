@@ -1,12 +1,14 @@
 from flask import Flask, request, jsonify, send_file, session, redirect
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+import sqlite3
 import os
 
 app = Flask(__name__)
 app.secret_key = "parcurs_secret"
 
 FILE = "curse.xlsx"
+DB = "curse.db"
 
 USERS = {
     "admin": "1234",
@@ -49,11 +51,35 @@ def init_excel():
 init_excel()
 
 # =========================
-# TOTAL PE ZI
+# INIT DATABASE
+# =========================
+def init_db():
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS curse (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        nr_auto TEXT,
+        data TEXT,
+        km_plecare REAL,
+        locatie_plecare TEXT,
+        km_sosire REAL,
+        locatie_sosire TEXT,
+        km_parcurs REAL
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+init_db()
+
+# =========================
+# TOTAL EXCEL
 # =========================
 def calculeaza_totaluri(ws):
 
-    # sterge TOTAL vechi
     for i in range(ws.max_row, 2, -1):
         if ws.cell(i, 1).value == "TOTAL":
             ws.delete_rows(i)
@@ -72,7 +98,6 @@ def calculeaza_totaluri(ws):
         totaluri[data] = totaluri.get(data, 0) + km
 
     rand = ws.max_row + 1
-
     border = Border(top=Side(style='thin'), bottom=Side(style='thin'))
 
     for data, total in totaluri.items():
@@ -88,30 +113,28 @@ def calculeaza_totaluri(ws):
         rand += 1
 
 # =========================
-# CITIRE DATE
+# CITIRE (din DB, NU Excel)
 # =========================
 def citeste_curse():
-    wb = load_workbook(FILE)
-    ws = wb.active
+    conn = sqlite3.connect(DB)
+    c = conn.cursor()
+
+    c.execute("SELECT * FROM curse ORDER BY id DESC")
+    rows = c.fetchall()
+    conn.close()
 
     curse = []
 
-    for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i < 2:
-            continue
-
-        if row[0] == "TOTAL":
-            continue
-
+    for r in rows:
         curse.append({
-            "id": i - 2,
-            "nr_auto": row[0],
-            "data": row[1],
-            "km_plecare": row[2],
-            "locatie_plecare": row[3],
-            "km_sosire": row[4],
-            "locatie_sosire": row[5],
-            "km_parcurs": row[6]
+            "id": r[0],
+            "nr_auto": r[1],
+            "data": r[2],
+            "km_plecare": r[3],
+            "locatie_plecare": r[4],
+            "km_sosire": r[5],
+            "locatie_sosire": r[6],
+            "km_parcurs": r[7]
         })
 
     return curse
@@ -141,7 +164,7 @@ def logout():
     return redirect("/login")
 
 # =========================
-# UI PRINCIPAL (FIXAT)
+# UI
 # =========================
 @app.route("/")
 def index():
@@ -225,7 +248,7 @@ def api():
     return jsonify(citeste_curse())
 
 # =========================
-# ADAUGARE
+# ADAUGARE (EXCEL + DB)
 # =========================
 @app.route("/adauga_cursa", methods=["POST"])
 def add():
@@ -236,6 +259,27 @@ def add():
         km_stop = float(data.get("kmSosire",0))
         km_calc = km_stop - km_start
 
+        # 🔹 DB
+        conn = sqlite3.connect(DB)
+        c = conn.cursor()
+
+        c.execute("""
+        INSERT INTO curse (nr_auto, data, km_plecare, locatie_plecare, km_sosire, locatie_sosire, km_parcurs)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            data.get("nrAuto"),
+            data.get("data"),
+            km_start,
+            data.get("locatiePlecare"),
+            km_stop,
+            data.get("locatieSosire"),
+            km_calc
+        ))
+
+        conn.commit()
+        conn.close()
+
+        # 🔹 EXCEL
         wb = load_workbook(FILE)
         ws = wb.active
 
@@ -250,13 +294,12 @@ def add():
         ])
 
         calculeaza_totaluri(ws)
-
         wb.save(FILE)
 
         return {"status":"ok"}
 
     except Exception as e:
-        print(e)
+        print("EROARE:", e)
         return {"status":"error"}
 
 # =========================
