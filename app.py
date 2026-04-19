@@ -8,7 +8,6 @@ app.secret_key = "parcurs_secret"
 
 FILE = "curse.xlsx"
 
-# 🔹 USERS
 USERS = {
     "admin": "1234",
     "sofer": "1234"
@@ -20,14 +19,12 @@ def init_excel():
         wb = Workbook()
         ws = wb.active
 
-        # 🔵 TITLU
         ws.merge_cells("A1:G1")
         title = ws["A1"]
         title.value = "Foaie de parcurs Flota Comteleprest"
         title.font = Font(size=14, bold=True)
         title.alignment = Alignment(horizontal="center")
 
-        # 🔵 HEADER
         headers = [
             "nr_auto",
             "data",
@@ -58,7 +55,6 @@ init_excel()
 def calculeaza_total_pe_zi(ws):
     rows = list(ws.iter_rows(values_only=True))
 
-    # șterge TOTAL vechi
     for i in range(len(rows), 2, -1):
         if rows[i-1][0] == "TOTAL":
             ws.delete_rows(i)
@@ -171,19 +167,11 @@ def index():
     <head>
         <title>Foaie Parcurs</title>
         <meta name="viewport" content="width=device-width, initial-scale=1">
-
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
-        <style>
-            body { background:#f5f7fa; }
-            .card { border-radius:15px; }
-        </style>
     </head>
-
     <body>
 
     <div class="container mt-4">
-
         <div class="card shadow p-4">
 
             <div class="d-flex justify-content-between">
@@ -193,21 +181,18 @@ def index():
 
             <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Descarcă Excel</a>
 
-            <input type="text" id="search" class="form-control mb-3" placeholder="🔍 Caută...">
-
-            <div class="table-responsive">
-                <table class="table table-striped table-hover" id="tabel">
-                    <thead class="table-dark">
-                        <tr>
-                            <th>ID</th>
-                            <th>Nr Auto</th>
-                            <th>Data</th>
-                            <th>Plecare</th>
-                            <th>Sosire</th>
-                            <th>Km</th>
-                        </tr>
-                    </thead>
-                    <tbody>
+            <table class="table table-striped">
+                <thead class="table-dark">
+                    <tr>
+                        <th>ID</th>
+                        <th>Nr Auto</th>
+                        <th>Data</th>
+                        <th>Plecare</th>
+                        <th>Sosire</th>
+                        <th>Km</th>
+                    </tr>
+                </thead>
+                <tbody>
     """
 
     for c in curse:
@@ -222,18 +207,7 @@ def index():
         </tr>
         """
 
-    html += """
-                    </tbody>
-                </table>
-            </div>
-
-            <h5 id="total" class="mt-3"></h5>
-
-        </div>
-    </div>
-    </body>
-    </html>
-    """
+    html += "</tbody></table></div></div></body></html>"
 
     return html
 
@@ -244,7 +218,7 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 ADAUGARE CURSA
+# 🔹 ADAUGARE CURSA (CORECTATA)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -258,9 +232,19 @@ def adauga_cursa():
         plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
         sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
 
-        km_plecare = float(data.get("kmPlecare") or 0)
-        km_sosire = float(data.get("kmSosire") or 0)
-        km = km_sosire - km_plecare
+        # 🔥 LOGICA CORECTA
+        km_plecare = data.get("kmPlecare")
+        km_sosire = data.get("kmSosire")
+        km_direct = data.get("kmParcurs") or data.get("km_parcurs")
+
+        if km_plecare and km_sosire:
+            km_plecare = float(km_plecare)
+            km_sosire = float(km_sosire)
+            km = km_sosire - km_plecare
+        else:
+            km = float(km_direct or 0)
+            km_plecare = ""
+            km_sosire = ""
 
         wb = load_workbook(FILE)
         ws = wb.active
