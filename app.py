@@ -14,25 +14,27 @@ USERS = {
     "sofer": "1234"
 }
 
-# 🔹 INIT EXCEL (CU TITLU + STIL)
+# 🔹 INIT EXCEL
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
         ws = wb.active
 
         # 🔵 TITLU
-        ws.merge_cells("A1:E1")
+        ws.merge_cells("A1:G1")
         title = ws["A1"]
         title.value = "Foaie de parcurs Flota Comteleprest"
         title.font = Font(size=14, bold=True)
         title.alignment = Alignment(horizontal="center")
 
-        # 🔵 HEADER (rand 2)
+        # 🔵 HEADER
         headers = [
             "nr_auto",
             "data",
             "locatie_plecare",
             "locatie_sosire",
+            "km_plecare",
+            "km_sosire",
             "km_parcurs"
         ]
 
@@ -47,14 +49,43 @@ def init_excel():
             cell.font = font
             cell.alignment = Alignment(horizontal="center")
 
-        # 📏 latime coloane
-        widths = [15, 15, 40, 40, 15]
-        for i, width in enumerate(widths, start=1):
-            ws.column_dimensions[chr(64 + i)].width = width
-
         wb.save(FILE)
 
 init_excel()
+
+
+# 🔹 TOTAL PE ZI
+def calculeaza_total_pe_zi(ws):
+    rows = list(ws.iter_rows(values_only=True))
+
+    # șterge TOTAL vechi
+    for i in range(len(rows), 2, -1):
+        if rows[i-1][0] == "TOTAL":
+            ws.delete_rows(i)
+
+    current_date = None
+    total = 0
+
+    for i in range(3, ws.max_row + 1):
+        data = ws.cell(i, 2).value
+        km = ws.cell(i, 7).value or 0
+
+        if current_date is None:
+            current_date = data
+
+        if data != current_date:
+            ws.insert_rows(i)
+            ws.cell(i, 1, "TOTAL")
+            ws.cell(i, 2, current_date)
+            ws.cell(i, 7, total)
+
+            current_date = data
+            total = 0
+
+        total += float(km)
+
+    if current_date:
+        ws.append(["TOTAL", current_date, "", "", "", "", total])
 
 
 # 🔹 CITESTE CURSE
@@ -68,13 +99,16 @@ def citeste_curse():
         if i < 2:
             continue
 
+        if row[0] == "TOTAL":
+            continue
+
         curse.append({
             "id": i - 2,
             "nr_auto": row[0] or "",
             "data": row[1] or "",
             "locatie_plecare": row[2] or "",
             "locatie_sosire": row[3] or "",
-            "km_parcurs": str(row[4] or "0")
+            "km_parcurs": str(row[6] or "0")
         })
 
     return curse
@@ -171,7 +205,6 @@ def index():
                             <th>Plecare</th>
                             <th>Sosire</th>
                             <th>Km</th>
-                            <th>Șterge</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -186,9 +219,6 @@ def index():
             <td>{c['locatie_plecare']}</td>
             <td>{c['locatie_sosire']}</td>
             <td>{c['km_parcurs']}</td>
-            <td>
-                <button class="btn btn-danger btn-sm" onclick="sterge({c['id']})">🗑</button>
-            </td>
         </tr>
         """
 
@@ -201,37 +231,6 @@ def index():
 
         </div>
     </div>
-
-    <script>
-        document.getElementById("search").addEventListener("keyup", function() {
-            let filter = this.value.toLowerCase();
-            let rows = document.querySelectorAll("#tabel tbody tr");
-
-            rows.forEach(row => {
-                let text = row.innerText.toLowerCase();
-                row.style.display = text.includes(filter) ? "" : "none";
-            });
-        });
-
-        let total = 0;
-        document.querySelectorAll("#tabel tbody tr").forEach(row => {
-            let km = row.cells[5].innerText.replace(",", ".");
-            total += parseFloat(km) || 0;
-        });
-
-        document.getElementById("total").innerText = "Total km: " + total.toFixed(2);
-
-        function sterge(id) {
-            if (!confirm("Ștergi cursa?")) return;
-
-            fetch("/sterge_cursa/" + id, {
-                method: "DELETE"
-            })
-            .then(res => res.json())
-            .then(() => location.reload());
-        }
-    </script>
-
     </body>
     </html>
     """
@@ -245,13 +244,7 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 API LISTA
-@app.route("/api/curse")
-def api_curse():
-    return jsonify(citeste_curse())
-
-
-# 🔹 ADAUGARE CURSA (FIX TELEFON)
+# 🔹 ADAUGARE CURSA
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -264,12 +257,25 @@ def adauga_cursa():
         data_cursa = data.get("data", "")
         plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
         sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
-        km = data.get("kmParcurs") or data.get("km_parcurs", "")
+
+        km_plecare = float(data.get("kmPlecare") or 0)
+        km_sosire = float(data.get("kmSosire") or 0)
+        km = km_sosire - km_plecare
 
         wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.append([nr_auto, data_cursa, plecare, sosire, km])
+        ws.append([
+            nr_auto,
+            data_cursa,
+            plecare,
+            sosire,
+            km_plecare,
+            km_sosire,
+            km
+        ])
+
+        calculeaza_total_pe_zi(ws)
 
         wb.save(FILE)
 
@@ -277,24 +283,6 @@ def adauga_cursa():
 
     except Exception as e:
         print("EROARE:", e)
-        return {"status": "error"}
-
-
-# 🔥 STERGERE
-@app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
-def sterge_cursa(id):
-    try:
-        wb = load_workbook(FILE)
-        ws = wb.active
-
-        ws.delete_rows(id + 3)
-
-        wb.save(FILE)
-
-        return {"status": "deleted"}
-
-    except Exception as e:
-        print("EROARE ȘTERGERE:", e)
         return {"status": "error"}
 
 
