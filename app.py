@@ -55,7 +55,6 @@ init_excel()
 def calculeaza_total_pe_zi(ws):
     rows = list(ws.iter_rows(values_only=True))
 
-    # șterge TOTAL vechi
     for i in range(len(rows), 2, -1):
         if rows[i-1][0] == "TOTAL":
             ws.delete_rows(i)
@@ -87,7 +86,7 @@ def calculeaza_total_pe_zi(ws):
         ws.append(["TOTAL", current_date, "", "", "", "", total])
 
 
-# 🔹 CITESTE CURSE (CORECT)
+# 🔹 CITESTE CURSE (SINCRONIZAT PERFECT)
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
@@ -102,9 +101,11 @@ def citeste_curse():
             "id": len(curse),
             "nr_auto": row[0] or "",
             "data": row[1] or "",
+            "km_plecare": row[2] or "",
             "locatie_plecare": row[3] or "",
+            "km_sosire": row[4] or "",
             "locatie_sosire": row[5] or "",
-            "km_parcurs": str(row[6] or "")
+            "km_parcurs": row[6] or ""
         })
 
     return curse
@@ -150,7 +151,7 @@ def logout():
     return redirect("/login")
 
 
-# 🔥 PAGINA PRINCIPALA
+# 🔥 PAGINA PRINCIPALA (TOATE COLOANELE)
 @app.route("/")
 def index():
     if "user" not in session:
@@ -181,10 +182,17 @@ def index():
 
         <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Excel</a>
 
-        <table class="table table-striped">
+        <table class="table table-striped table-bordered">
         <thead class="table-dark">
         <tr>
-        <th>ID</th><th>Nr Auto</th><th>Data</th><th>Plecare</th><th>Sosire</th><th>Km</th>
+        <th>ID</th>
+        <th>Nr Auto</th>
+        <th>Data</th>
+        <th>Km Plecare</th>
+        <th>Locatie Plecare</th>
+        <th>Km Sosire</th>
+        <th>Locatie Sosire</th>
+        <th>Km Parcurs</th>
         </tr>
         </thead><tbody>
     """
@@ -195,7 +203,9 @@ def index():
         <td>{c['id']}</td>
         <td>{c['nr_auto']}</td>
         <td>{c['data']}</td>
+        <td>{c['km_plecare']}</td>
         <td>{c['locatie_plecare']}</td>
+        <td>{c['km_sosire']}</td>
         <td>{c['locatie_sosire']}</td>
         <td>{c['km_parcurs']}</td>
         </tr>
@@ -216,7 +226,7 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 ADAUGARE CURSA (100% COMPATIBIL TELEFON)
+# 🔹 ADAUGARE
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
@@ -232,7 +242,6 @@ def adauga_cursa():
 
         km_parcurs = data.get("kmParcurs") or data.get("km_parcurs")
 
-        # NU forțăm valori
         km_plecare = data.get("kmPlecare") or ""
         km_sosire = data.get("kmSosire") or ""
 
