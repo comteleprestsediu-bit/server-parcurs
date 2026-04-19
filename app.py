@@ -1,7 +1,6 @@
 from flask import Flask, request, jsonify, send_file, session, redirect
 from openpyxl import Workbook, load_workbook
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, PatternFill, Alignment
 import os
 
 app = Flask(__name__)
@@ -9,200 +8,295 @@ app.secret_key = "parcurs_secret"
 
 FILE = "curse.xlsx"
 
+# 🔹 USERS
 USERS = {
     "admin": "1234",
     "sofer": "1234"
 }
 
-# 🔹 INIT
+# 🔹 INIT EXCEL (CU TITLU + STIL)
 def init_excel():
     if not os.path.exists(FILE):
         wb = Workbook()
         ws = wb.active
+
+        # 🔵 TITLU
+        ws.merge_cells("A1:E1")
+        title = ws["A1"]
+        title.value = "Foaie de parcurs Flota Comteleprest"
+        title.font = Font(size=14, bold=True)
+        title.alignment = Alignment(horizontal="center")
+
+        # 🔵 HEADER (rand 2)
+        headers = [
+            "nr_auto",
+            "data",
+            "locatie_plecare",
+            "locatie_sosire",
+            "km_parcurs"
+        ]
+
+        ws.append(headers)
+
+        fill = PatternFill(start_color="4F81BD", end_color="4F81BD", fill_type="solid")
+        font = Font(bold=True, color="FFFFFF")
+
+        for col in range(1, len(headers) + 1):
+            cell = ws.cell(row=2, column=col)
+            cell.fill = fill
+            cell.font = font
+            cell.alignment = Alignment(horizontal="center")
+
+        # 📏 latime coloane
+        widths = [15, 15, 40, 40, 15]
+        for i, width in enumerate(widths, start=1):
+            ws.column_dimensions[chr(64 + i)].width = width
+
         wb.save(FILE)
 
 init_excel()
 
-# 🔹 STIL
-def stilizeaza(ws):
-    thin = Border(left=Side(style='thin'), right=Side(style='thin'),
-                  top=Side(style='thin'), bottom=Side(style='thin'))
 
-    # titlu
-    ws.merge_cells("A1:G1")
-    ws["A1"] = "Foaie de parcurs Flota Comteleprest"
-    ws["A1"].font = Font(size=14, bold=True)
-    ws["A1"].alignment = Alignment(horizontal="center")
-
-    # header
-    headers = ["nr_auto","data","locatie_plecare","locatie_sosire","km_plecare","km_sosire","km_parcurs"]
-    ws.append(headers)
-
-    for col in range(1, 8):
-        c = ws.cell(2, col)
-        c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill(start_color="4F81BD", fill_type="solid")
-        c.alignment = Alignment(horizontal="center")
-        c.border = thin
-
-    # borduri + total
-    for row in ws.iter_rows(min_row=3, max_row=ws.max_row, max_col=7):
-        for cell in row:
-            cell.border = thin
-            if cell.column in [5,6,7]:
-                cell.alignment = Alignment(horizontal="right")
-
-        if row[0].value == "TOTAL":
-            for cell in row:
-                cell.font = Font(bold=True)
-                cell.fill = PatternFill(start_color="FFF2CC", fill_type="solid")
-
-    # auto width
-    for col in range(1,8):
-        max_len = 0
-        col_letter = get_column_letter(col)
-        for cell in ws[col_letter]:
-            if cell.value:
-                max_len = max(max_len, len(str(cell.value)))
-        ws.column_dimensions[col_letter].width = max_len + 2
-
-    ws.freeze_panes = "A3"
-
-# 🔹 CITEȘTE
-def citeste():
-    if not os.path.exists(FILE):
-        return []
-
+# 🔹 CITESTE CURSE
+def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
 
     curse = []
 
-    for row in ws.iter_rows(min_row=3, values_only=True):
-        if row[0] == "TOTAL":
+    for i, row in enumerate(ws.iter_rows(values_only=True)):
+        if i < 2:
             continue
 
         curse.append({
-            "nr_auto": row[0],
-            "data": row[1],
-            "locatie_plecare": row[2],
-            "locatie_sosire": row[3],
-            "km_plecare": row[4],
-            "km_sosire": row[5],
-            "km_parcurs": row[6]
+            "id": i - 2,
+            "nr_auto": row[0] or "",
+            "data": row[1] or "",
+            "locatie_plecare": row[2] or "",
+            "locatie_sosire": row[3] or "",
+            "km_parcurs": str(row[4] or "0")
         })
 
     return curse
 
-# 🔹 RESCRIE COMPLET (SOLUȚIA CHEIE)
-def rescrie_excel(curse):
-    wb = Workbook()
-    ws = wb.active
-
-    # titlu + header
-    ws.merge_cells("A1:G1")
-    ws["A1"] = "Foaie de parcurs Flota Comteleprest"
-
-    ws.append([
-        "nr_auto","data","locatie_plecare","locatie_sosire",
-        "km_plecare","km_sosire","km_parcurs"
-    ])
-
-    # grupare pe zile
-    cur_day = None
-    total = 0
-
-    for c in curse:
-        km_parcurs = float(c["km_sosire"]) - float(c["km_plecare"])
-
-        if cur_day is None:
-            cur_day = c["data"]
-
-        if c["data"] != cur_day:
-            ws.append(["TOTAL", cur_day, "", "", "", "", total])
-            total = 0
-            cur_day = c["data"]
-
-        ws.append([
-            c["nr_auto"],
-            c["data"],
-            c["locatie_plecare"],
-            c["locatie_sosire"],
-            c["km_plecare"],
-            c["km_sosire"],
-            km_parcurs
-        ])
-
-        total += km_parcurs
-
-    if cur_day:
-        ws.append(["TOTAL", cur_day, "", "", "", "", total])
-
-    stilizeaza(ws)
-    wb.save(FILE)
 
 # 🔐 LOGIN
-@app.route("/login", methods=["GET","POST"])
+@app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        if USERS.get(request.form["user"]) == request.form["parola"]:
-            session["user"] = request.form["user"]
+        user = request.form.get("user")
+        parola = request.form.get("parola")
+
+        if USERS.get(user) == parola:
+            session["user"] = user
             return redirect("/")
-        return "Login gresit"
+        else:
+            return "Login greșit"
 
-    return "<form method=post>User:<input name=user><br>Parola:<input name=parola><br><button>Login</button></form>"
+    return """
+    <html>
+    <head>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    </head>
+    <body class="bg-light">
 
+    <div class="container mt-5">
+        <div class="card p-4 shadow" style="max-width:400px;margin:auto;">
+            <h3 class="mb-3">Login</h3>
+
+            <form method="post">
+                <input name="user" class="form-control mb-2" placeholder="User">
+                <input name="parola" type="password" class="form-control mb-2" placeholder="Parola">
+                <button class="btn btn-primary w-100">Login</button>
+            </form>
+        </div>
+    </div>
+
+    </body>
+    </html>
+    """
+
+
+# 🔓 LOGOUT
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/login")
 
-# 🔹 PAGINA
+
+# 🔥 PAGINA PRINCIPALA
 @app.route("/")
 def index():
     if "user" not in session:
         return redirect("/login")
 
-    curse = citeste()
+    curse = citeste_curse()
 
-    html = "<h2>Raport curse</h2><table border=1>"
-    html += "<tr><th>Auto</th><th>Data</th><th>Plecare</th><th>Sosire</th><th>Km</th></tr>"
+    html = """
+    <html>
+    <head>
+        <title>Foaie Parcurs</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
+        <style>
+            body { background:#f5f7fa; }
+            .card { border-radius:15px; }
+        </style>
+    </head>
+
+    <body>
+
+    <div class="container mt-4">
+
+        <div class="card shadow p-4">
+
+            <div class="d-flex justify-content-between">
+                <h3>🚗 Raport curse</h3>
+                <a href="/logout" class="btn btn-secondary">Logout</a>
+            </div>
+
+            <a href="/download" class="btn btn-success mt-2 mb-3">⬇️ Descarcă Excel</a>
+
+            <input type="text" id="search" class="form-control mb-3" placeholder="🔍 Caută...">
+
+            <div class="table-responsive">
+                <table class="table table-striped table-hover" id="tabel">
+                    <thead class="table-dark">
+                        <tr>
+                            <th>ID</th>
+                            <th>Nr Auto</th>
+                            <th>Data</th>
+                            <th>Plecare</th>
+                            <th>Sosire</th>
+                            <th>Km</th>
+                            <th>Șterge</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+    """
 
     for c in curse:
-        html += f"<tr><td>{c['nr_auto']}</td><td>{c['data']}</td><td>{c['locatie_plecare']}</td><td>{c['locatie_sosire']}</td><td>{c['km_parcurs']}</td></tr>"
+        html += f"""
+        <tr>
+            <td>{c['id']}</td>
+            <td>{c['nr_auto']}</td>
+            <td>{c['data']}</td>
+            <td>{c['locatie_plecare']}</td>
+            <td>{c['locatie_sosire']}</td>
+            <td>{c['km_parcurs']}</td>
+            <td>
+                <button class="btn btn-danger btn-sm" onclick="sterge({c['id']})">🗑</button>
+            </td>
+        </tr>
+        """
 
-    html += "</table><br><a href='/download'>Download Excel</a>"
+    html += """
+                    </tbody>
+                </table>
+            </div>
+
+            <h5 id="total" class="mt-3"></h5>
+
+        </div>
+    </div>
+
+    <script>
+        document.getElementById("search").addEventListener("keyup", function() {
+            let filter = this.value.toLowerCase();
+            let rows = document.querySelectorAll("#tabel tbody tr");
+
+            rows.forEach(row => {
+                let text = row.innerText.toLowerCase();
+                row.style.display = text.includes(filter) ? "" : "none";
+            });
+        });
+
+        let total = 0;
+        document.querySelectorAll("#tabel tbody tr").forEach(row => {
+            let km = row.cells[5].innerText.replace(",", ".");
+            total += parseFloat(km) || 0;
+        });
+
+        document.getElementById("total").innerText = "Total km: " + total.toFixed(2);
+
+        function sterge(id) {
+            if (!confirm("Ștergi cursa?")) return;
+
+            fetch("/sterge_cursa/" + id, {
+                method: "DELETE"
+            })
+            .then(res => res.json())
+            .then(() => location.reload());
+        }
+    </script>
+
+    </body>
+    </html>
+    """
+
     return html
+
 
 # 🔹 DOWNLOAD
 @app.route("/download")
-def download():
+def download_excel():
     return send_file(FILE, as_attachment=True)
 
-# 🔹 ADAUGĂ
+
+# 🔹 API LISTA
+@app.route("/api/curse")
+def api_curse():
+    return jsonify(citeste_curse())
+
+
+# 🔹 ADAUGARE CURSA (FIX TELEFON)
 @app.route("/adauga_cursa", methods=["POST"])
-def adauga():
+def adauga_cursa():
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
 
-        curse = citeste()
+        if not data:
+            data = request.form
 
-        curse.append({
-            "nr_auto": data.get("nrAuto"),
-            "data": data.get("data"),
-            "locatie_plecare": data.get("locatiePlecare"),
-            "locatie_sosire": data.get("locatieSosire"),
-            "km_plecare": float(data.get("kmPlecare",0)),
-            "km_sosire": float(data.get("kmSosire",0))
-        })
+        nr_auto = data.get("nrAuto") or data.get("nr_auto", "")
+        data_cursa = data.get("data", "")
+        plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
+        sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
+        km = data.get("kmParcurs") or data.get("km_parcurs", "")
 
-        rescrie_excel(curse)
+        wb = load_workbook(FILE)
+        ws = wb.active
 
-        return {"status":"ok"}
+        ws.append([nr_auto, data_cursa, plecare, sosire, km])
+
+        wb.save(FILE)
+
+        return {"status": "ok"}
 
     except Exception as e:
         print("EROARE:", e)
-        return {"status":"error"}
+        return {"status": "error"}
+
+
+# 🔥 STERGERE
+@app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
+def sterge_cursa(id):
+    try:
+        wb = load_workbook(FILE)
+        ws = wb.active
+
+        ws.delete_rows(id + 3)
+
+        wb.save(FILE)
+
+        return {"status": "deleted"}
+
+    except Exception as e:
+        print("EROARE ȘTERGERE:", e)
+        return {"status": "error"}
+
 
 # 🔹 START
 if __name__ == "__main__":
