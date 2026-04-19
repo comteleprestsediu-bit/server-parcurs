@@ -27,7 +27,7 @@ def init_excel():
         title.font = Font(size=14, bold=True)
         title.alignment = Alignment(horizontal="center")
 
-        # 🔵 HEADER (pe rândul 2)
+        # 🔵 HEADER (rand 2)
         headers = [
             "nr_auto",
             "data",
@@ -47,7 +47,7 @@ def init_excel():
             cell.font = font
             cell.alignment = Alignment(horizontal="center")
 
-        # 📏 Lățime coloane
+        # 📏 latime coloane
         widths = [15, 15, 40, 40, 15]
         for i, width in enumerate(widths, start=1):
             ws.column_dimensions[chr(64 + i)].width = width
@@ -57,7 +57,7 @@ def init_excel():
 init_excel()
 
 
-# 🔹 CITEȘTE DATE
+# 🔹 CITESTE CURSE
 def citeste_curse():
     wb = load_workbook(FILE)
     ws = wb.active
@@ -65,7 +65,7 @@ def citeste_curse():
     curse = []
 
     for i, row in enumerate(ws.iter_rows(values_only=True)):
-        if i < 2:  # sari peste titlu + header
+        if i < 2:
             continue
 
         curse.append({
@@ -124,7 +124,7 @@ def logout():
     return redirect("/login")
 
 
-# 🔥 PAGINA PRINCIPALĂ
+# 🔥 PAGINA PRINCIPALA
 @app.route("/")
 def index():
     if "user" not in session:
@@ -245,42 +245,31 @@ def download_excel():
     return send_file(FILE, as_attachment=True)
 
 
-# 🔹 API
+# 🔹 API LISTA
 @app.route("/api/curse")
 def api_curse():
     return jsonify(citeste_curse())
 
 
-# 🔹 ADAUGĂ CURSĂ
+# 🔹 ADAUGARE CURSA (FIX TELEFON)
 @app.route("/adauga_cursa", methods=["POST"])
 def adauga_cursa():
     try:
-        data = request.get_json(force=True)
+        data = request.get_json(silent=True)
+
+        if not data:
+            data = request.form
+
+        nr_auto = data.get("nrAuto") or data.get("nr_auto", "")
+        data_cursa = data.get("data", "")
+        plecare = data.get("locatiePlecare") or data.get("locatie_plecare", "")
+        sosire = data.get("locatieSosire") or data.get("locatie_sosire", "")
+        km = data.get("kmParcurs") or data.get("km_parcurs", "")
 
         wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.append([
-            data.get("nrAuto", ""),
-            data.get("data", ""),
-            data.get("locatiePlecare", ""),
-            data.get("locatieSosire", ""),
-            data.get("kmParcurs", "")
-        ])
-
-        # AUTO RESIZE
-        for col in ws.columns:
-            max_length = 0
-            col_letter = col[0].column_letter
-
-            for cell in col:
-                try:
-                    if cell.value:
-                        max_length = max(max_length, len(str(cell.value)))
-                except:
-                    pass
-
-            ws.column_dimensions[col_letter].width = min(max_length + 2, 50)
+        ws.append([nr_auto, data_cursa, plecare, sosire, km])
 
         wb.save(FILE)
 
@@ -291,14 +280,14 @@ def adauga_cursa():
         return {"status": "error"}
 
 
-# 🔥 ȘTERGE
+# 🔥 STERGERE
 @app.route("/sterge_cursa/<int:id>", methods=["DELETE"])
 def sterge_cursa(id):
     try:
         wb = load_workbook(FILE)
         ws = wb.active
 
-        ws.delete_rows(id + 3)  # +3 pentru titlu + header
+        ws.delete_rows(id + 3)
 
         wb.save(FILE)
 
