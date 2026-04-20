@@ -23,7 +23,7 @@ def init_excel():
         wb = Workbook()
         ws = wb.active
 
-        ws.merge_cells("A1:G1")
+        ws.merge_cells("A1:E1")
         ws["A1"] = "Foaie de parcurs Flota Comteleprest"
         ws["A1"].font = Font(size=14, bold=True)
         ws["A1"].alignment = Alignment(horizontal="center")
@@ -31,17 +31,15 @@ def init_excel():
         headers = [
             "nr_auto",
             "data",
-            "km_plecare",
-            "locatie_plecare",
-            "km_sosire",
-            "locatie_sosire",
+            "locatii_intermediare",
+            "sosire",
             "km_parcurs"
         ]
 
         ws.append(headers)
 
         fill = PatternFill(start_color="4F81BD", fill_type="solid")
-        for col in range(1, 8):
+        for col in range(1, 6):
             c = ws.cell(row=2, column=col)
             c.fill = fill
             c.font = Font(bold=True, color="FFFFFF")
@@ -62,10 +60,8 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         nr_auto TEXT,
         data TEXT,
-        km_plecare REAL,
-        locatie_plecare TEXT,
-        km_sosire REAL,
-        locatie_sosire TEXT,
+        locatii_intermediare TEXT,
+        sosire TEXT,
         km_parcurs REAL
     )
     """)
@@ -88,7 +84,7 @@ def calculeaza_totaluri(ws):
 
     for i in range(3, ws.max_row + 1):
         data = ws.cell(i, 2).value
-        km = ws.cell(i, 7).value or 0
+        km = ws.cell(i, 5).value or 0
 
         try:
             km = float(km)
@@ -103,9 +99,9 @@ def calculeaza_totaluri(ws):
     for data, total in totaluri.items():
         ws.cell(rand, 1).value = "TOTAL"
         ws.cell(rand, 2).value = data
-        ws.cell(rand, 7).value = total
+        ws.cell(rand, 5).value = total
 
-        for col in [1,2,7]:
+        for col in [1,2,5]:
             c = ws.cell(rand, col)
             c.font = Font(bold=True)
             c.border = border
@@ -113,7 +109,7 @@ def calculeaza_totaluri(ws):
         rand += 1
 
 # =========================
-# CITIRE (din DB, NU Excel)
+# CITIRE
 # =========================
 def citeste_curse():
     conn = sqlite3.connect(DB)
@@ -130,11 +126,9 @@ def citeste_curse():
             "id": r[0],
             "nr_auto": r[1],
             "data": r[2],
-            "km_plecare": r[3],
-            "locatie_plecare": r[4],
-            "km_sosire": r[5],
-            "locatie_sosire": r[6],
-            "km_parcurs": r[7]
+            "locatii_intermediare": r[3],
+            "sosire": r[4],
+            "km_total": r[5]
         })
 
     return curse
@@ -198,9 +192,7 @@ def index():
     <th>ID</th>
     <th>Nr Auto</th>
     <th>Data</th>
-    <th>Km Plecare</th>
-    <th>Plecare</th>
-    <th>Km Sosire</th>
+    <th>Locatii intermediare</th>
     <th>Sosire</th>
     <th>Km Parcurs</th>
     </tr>
@@ -211,18 +203,16 @@ def index():
     total = 0
 
     for c in curse:
-        total += float(c["km_parcurs"] or 0)
+        total += float(c["km_total"] or 0)
 
         html += f"""
         <tr>
         <td>{c['id']}</td>
         <td>{c['nr_auto']}</td>
         <td>{c['data']}</td>
-        <td>{c['km_plecare']}</td>
-        <td>{c['locatie_plecare']}</td>
-        <td>{c['km_sosire']}</td>
-        <td>{c['locatie_sosire']}</td>
-        <td>{c['km_parcurs']}</td>
+        <td>{c['locatii_intermediare']}</td>
+        <td>{c['sosire']}</td>
+        <td>{c['km_total']}</td>
         </tr>
         """
 
@@ -241,66 +231,62 @@ def index():
     return html
 
 # =========================
-# API
+# API GET
 # =========================
-@app.route("/api/curse")
+@app.route("/api/curse", methods=["GET"])
 def api():
     return jsonify(citeste_curse())
 
 # =========================
-# ADAUGARE (EXCEL + DB)
+# API POST
 # =========================
-@app.route("/adauga_cursa", methods=["POST"])
+@app.route("/api/curse", methods=["POST"])
 def add():
     try:
         data = request.get_json()
 
-        km_start = float(data.get("kmPlecare",0))
-        km_stop = float(data.get("kmSosire",0))
-        km_calc = km_stop - km_start
+        nr_auto = data.get("nr_auto")
+        data_cursa = data.get("data")
+        locatii_intermediare = data.get("locatii_intermediare")
+        sosire = data.get("sosire")
+        km_total = float(data.get("km_total", 0))
 
-        # 🔹 DB
         conn = sqlite3.connect(DB)
         c = conn.cursor()
 
         c.execute("""
-        INSERT INTO curse (nr_auto, data, km_plecare, locatie_plecare, km_sosire, locatie_sosire, km_parcurs)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO curse (nr_auto, data, locatii_intermediare, sosire, km_parcurs)
+        VALUES (?, ?, ?, ?, ?)
         """, (
-            data.get("nrAuto"),
-            data.get("data"),
-            km_start,
-            data.get("locatiePlecare"),
-            km_stop,
-            data.get("locatieSosire"),
-            km_calc
+            nr_auto,
+            data_cursa,
+            locatii_intermediare,
+            sosire,
+            km_total
         ))
 
         conn.commit()
         conn.close()
 
-        # 🔹 EXCEL
         wb = load_workbook(FILE)
         ws = wb.active
 
         ws.append([
-            data.get("nrAuto"),
-            data.get("data"),
-            km_start,
-            data.get("locatiePlecare"),
-            km_stop,
-            data.get("locatieSosire"),
-            km_calc
+            nr_auto,
+            data_cursa,
+            locatii_intermediare,
+            sosire,
+            km_total
         ])
 
         calculeaza_totaluri(ws)
         wb.save(FILE)
 
-        return {"status":"ok"}
+        return {"status": "ok"}
 
     except Exception as e:
         print("EROARE:", e)
-        return {"status":"error"}
+        return {"status": "error"}
 
 # =========================
 # DOWNLOAD
